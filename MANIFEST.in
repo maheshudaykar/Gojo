@@ -10,8 +10,6 @@ include UI_IMPROVEMENTS.md
 # Include requirements
 include requirements.txt
 include requirements_production.txt
-include setup.py
-include setup.cfg
 include pyproject.toml
 
 # Include scripts

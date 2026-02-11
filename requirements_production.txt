@@ -7,12 +7,12 @@ joblib>=1.3.0
 
 # Web framework and WSGI
 Flask>=3.0.0
-waitress>=2.1.2  # Production WSGI server for Windows
+waitress>=3.0.0  # Production WSGI server for Windows
 
 # Security enhancements
+Flask-WTF>=1.2.1  # CSRF protection
 Flask-Talisman>=1.1.0  # Security headers
 Flask-Limiter>=3.5.0  # Rate limiting
-itsdangerous>=2.1.0  # Secure token generation
 
 # Logging and monitoring
 python-json-logger>=2.0.7  # Structured JSON logging

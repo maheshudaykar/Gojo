@@ -12,8 +12,6 @@ Before uploading to GitHub, ensure all files are in place:
 - [x] **CONTRIBUTING.md** - Contributor guidelines
 - [x] **LICENSE** - MIT License
 - [x] **.gitignore** - Ignore patterns for Python/models/logs
-- [x] **setup.py** - Package installation script
-- [x] **setup.cfg** - Package configuration
 - [x] **pyproject.toml** - Modern Python packaging
 - [x] **requirements.txt** - Core dependencies
 - [x] **requirements_production.txt** - Production dependencies
@@ -48,8 +46,8 @@ Initialized empty Git repository in c:/Mahi/Project/Cyber projects/.git/
 Set your Git identity (use your GitHub email):
 
 ```powershell
-git config user.name "Your Name"
-git config user.email "your.github.email@example.com"
+git config user.name "maheshudaykar"
+git config user.email "maheshudaykar11@gmail.com"
 ```
 
 Verify configuration:
@@ -150,10 +148,10 @@ gh repo create gojo --public --description "Production-grade Gojo with ML ensemb
 
 ## 🔗 Step 6: Connect Local to Remote
 
-Add GitHub remote (replace `yourusername` with your GitHub username):
+Add GitHub remote:
 
 ```powershell
-git remote add origin https://github.com/yourusername/gojo.git
+git remote add origin https://github.com/maheshudaykar/Gojo.git
 ```
 
 Verify remote:
@@ -164,8 +162,8 @@ git remote -v
 
 **Expected Output:**
 ```
-origin  https://github.com/yourusername/gojo.git (fetch)
-origin  https://github.com/yourusername/gojo.git (push)
+origin  https://github.com/maheshudaykar/Gojo.git (fetch)
+origin  https://github.com/maheshudaykar/Gojo.git (push)
 ```
 
 ---
@@ -192,7 +190,7 @@ Delta compression using up to X threads
 Compressing objects: 100% (XX/XX), done.
 Writing objects: 100% (XX/XX), XXX.XX KiB | XXX.XX MiB/s, done.
 Total XX (delta X), reused 0 (delta 0), pack-reused 0
-To https://github.com/yourusername/gojo.git
+To https://github.com/maheshudaykar/Gojo.git
  * [new branch]      main -> main
 Branch 'main' set up to track remote branch 'main' from 'origin'.
 ```
@@ -201,7 +199,7 @@ Branch 'main' set up to track remote branch 'main' from 'origin'.
 
 ## 🎨 Step 8: Configure Repository Settings
 
-Go to your repository on GitHub: `https://github.com/yourusername/gojo`
+Go to your repository on GitHub: `https://github.com/maheshudaykar/Gojo`
 
 ### Add Topics/Tags
 
@@ -286,7 +284,7 @@ Verify:
    - Recall: 94%
    - Dataset: 9,048 URLs
 
-   **Full Changelog**: https://github.com/yourusername/gojo/commits/v2.0.0
+   **Full Changelog**: https://github.com/maheshudaykar/Gojo/commits/v2.0.0
    ```
 6. Click **Publish release**
 
@@ -342,7 +340,7 @@ Example tweet:
 • Production Flask web app
 • Comprehensive docs
 
-⭐ Star & contribute: https://github.com/yourusername/gojo
+⭐ Star & contribute: https://github.com/maheshudaykar/Gojo
 
 #Python #MachineLearning #Cybersecurity #OpenSource
 ```
@@ -364,7 +362,7 @@ Test that others can clone and use your project:
 
 ```powershell
 cd $env:TEMP
-git clone https://github.com/yourusername/gojo.git
+git clone https://github.com/maheshudaykar/Gojo.git
 cd gojo
 
 # Create venv
@@ -378,7 +376,7 @@ pip install -r requirements.txt
 git clone https://github.com/Priyanshu88/DatasetWebFraudDetection.git data/DatasetWebFraudDetection
 
 # Train models
-python -m phish_detector.train --dataset data/DatasetWebFraudDetection/dataset.csv --url-col url --label-col verdict
+python -m phish_detector.train --data data/DatasetWebFraudDetection/dataset.csv --url-col url --label-col verdict
 
 # Test detection
 python -m phish_detector detect "http://paypa1.com"
@@ -401,7 +399,7 @@ Create **SECURITY.md**:
 
 If you discover a security vulnerability, please report it via:
 - **Email:** security@example.com
-- **GitHub Security Advisory:** [Create advisory](https://github.com/yourusername/gojo/security/advisories/new)
+- **GitHub Security Advisory:** [Create advisory](https://github.com/maheshudaykar/Gojo/security/advisories/new)
 
 Please do NOT open public issues for security vulnerabilities.
 

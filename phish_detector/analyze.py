@@ -9,7 +9,7 @@ from phish_detector.parsing import parse_url
 from phish_detector.policy import BanditPolicy, DEFAULT_WEIGHT
 from phish_detector.report import build_report
 from phish_detector.rules import evaluate_rules
-from phish_detector.scoring import combine_scores, compute_score
+from phish_detector.scoring import binary_label_for_score, combine_scores, compute_score
 
 
 # Protocol for policy compatibility (supports both v1 and v2)
@@ -144,7 +144,7 @@ def analyze_url(
     else:
         final_score = combine_scores(rule_score.score, ml_score, weight, hits)
 
-    predicted_label = "phish" if final_score.score >= 60 else "legit"
+    predicted_label = binary_label_for_score(final_score.score)
     feedback_info: dict[str, Any] | None = None
 
     if config.enable_feedback:

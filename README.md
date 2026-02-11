@@ -74,7 +74,7 @@ Built for **real-world deployment**, this tool achieves **96% accuracy** while r
 
 ### 1. Clone Repository
 ```bash
-git clone https://github.com/yourusername/gojo.git
+git clone https://github.com/maheshudaykar/Gojo.git
 cd gojo
 ```
 
@@ -262,7 +262,7 @@ Personal-use license (non-commercial). See [LICENSE](LICENSE) for details.
 
 ⭐ Star us on GitHub if you find this useful!
 
-[Report Bug](https://github.com/yourusername/gojo/issues) •
-[Request Feature](https://github.com/yourusername/gojo/issues)
+[Report Bug](https://github.com/maheshudaykar/Gojo/issues) •
+[Request Feature](https://github.com/maheshudaykar/Gojo/issues)
 
 </div>

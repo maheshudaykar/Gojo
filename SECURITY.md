@@ -7,7 +7,7 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 ### How to Report
 
 **DO:**
-- Email security details to: **your.email@example.com** (replace with your email)
+- Email security details to: **maheshudaykar11@gmail.com**
 - Include:
   - Description of the vulnerability
   - Steps to reproduce
@@ -103,17 +103,22 @@ We provide security updates for the following versions:
 ### Current Mitigations
 
 1. **Input Validation:**
-   - URL length limited to 10,000 characters
+   - URL length limited to 2,048 characters
    - CSV upload limited to 10MB
    - File type validation for uploads
    - Path traversal prevention
 
-2. **Dependency Scanning:**
+2. **Web Security Controls:**
+   - CSRF protection on form submissions
+   - Rate limiting on key routes
+   - Security headers via Flask-Talisman
+
+3. **Dependency Scanning:**
    - Automated security scans via GitHub Dependabot
    - Bandit static analysis in CI/CD pipeline
    - Safety checks for vulnerable packages
 
-3. **Session Security:**
+4. **Session Security:**
    - Flask sessions with secure defaults
    - CSRF protection (implement if adding forms)
    - SameSite cookies
@@ -181,9 +186,9 @@ We follow **coordinated disclosure**:
 
 ## 📧 Contact
 
-- **Security Email:** your.email@example.com
+- **Security Email:** maheshudaykar11@gmail.com
 - **PGP Key:** [Optional: Add PGP public key for encrypted communication]
-- **GitHub Security Advisory:** [Create advisory](https://github.com/yourusername/gojo/security/advisories/new)
+- **GitHub Security Advisory:** [Create advisory](https://github.com/maheshudaykar/Gojo/security/advisories/new)
 
 ---
 

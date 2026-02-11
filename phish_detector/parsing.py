@@ -4,6 +4,7 @@ import ipaddress
 import json
 import re
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Optional
 from urllib.parse import unquote, urlsplit, urlunsplit
@@ -31,8 +32,8 @@ class ParsedURL:
         return json.dumps(asdict(self), indent=2, sort_keys=True)
 
 
-def load_shortener_hosts(extra_hosts: Optional[Iterable[str]] = None) -> set[str]:
-    """Load known URL shortener hosts from configs/shorteners.txt."""
+@lru_cache(maxsize=1)
+def _load_shortener_hosts() -> set[str]:
     root = Path(__file__).resolve().parents[1]
     shorteners_path = root / "configs" / "shorteners.txt"
     hosts: set[str] = set()
@@ -41,6 +42,12 @@ def load_shortener_hosts(extra_hosts: Optional[Iterable[str]] = None) -> set[str
             entry = line.strip().lower()
             if entry and not entry.startswith("#"):
                 hosts.add(entry)
+    return hosts
+
+
+def load_shortener_hosts(extra_hosts: Optional[Iterable[str]] = None) -> set[str]:
+    """Load known URL shortener hosts from configs/shorteners.txt."""
+    hosts = set(_load_shortener_hosts())
     if extra_hosts:
         hosts.update(h.strip().lower() for h in extra_hosts if h.strip())
     return hosts

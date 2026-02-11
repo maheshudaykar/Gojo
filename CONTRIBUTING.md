@@ -152,7 +152,7 @@ git clone https://github.com/Priyanshu88/DatasetWebFraudDetection.git data/Datas
 
 ```bash
 python -m phish_detector.train \
-    --dataset data/DatasetWebFraudDetection/dataset.csv \
+    --data data/DatasetWebFraudDetection/dataset.csv \
     --url-col url \
     --label-col verdict
 ```
@@ -517,7 +517,7 @@ Closes #123
 
 ### Bug Fixes
 
-Check the [issue tracker](https://github.com/yourusername/gojo/issues) for bugs labeled `good first issue`.
+Check the [issue tracker](https://github.com/maheshudaykar/Gojo/issues) for bugs labeled `good first issue`.
 
 ### Documentation
 
@@ -548,9 +548,9 @@ Check the [issue tracker](https://github.com/yourusername/gojo/issues) for bugs 
 
 ## 📧 Questions?
 
-- **GitHub Discussions**: [Ask questions](https://github.com/yourusername/gojo/discussions)
-- **Issues**: [Report bugs/request features](https://github.com/yourusername/gojo/issues)
-- **Email**: your.email@example.com
+- **GitHub Discussions**: [Ask questions](https://github.com/maheshudaykar/Gojo/discussions)
+- **Issues**: [Report bugs/request features](https://github.com/maheshudaykar/Gojo/issues)
+- **Email**: maheshudaykar11@gmail.com
 
 ---
 

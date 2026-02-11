@@ -83,7 +83,6 @@ def main() -> int:
             raise SystemExit("Bulk mode requires --output")
         with open(args.input_csv, "r", encoding="utf-8", newline="") as handle:
             reader = csv.DictReader(handle)
-            rows = list(reader)
         reports: list[dict[str, Any]] = []
         with open(args.output, "w", encoding="utf-8", newline="") as out_handle:
             writer: csv.DictWriter[str] | None = None
@@ -102,7 +101,7 @@ def main() -> int:
                     ],
                 )
                 writer.writeheader()
-            for row in rows:
+            for row in reader:
                 url = (row.get(args.url_col) or "").strip()
                 if not url:
                     logging.warning("Skipping row without URL")

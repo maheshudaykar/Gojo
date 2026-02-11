@@ -23,20 +23,40 @@ from typing import Any
 from urllib.parse import urlparse
 
 from flask import Flask, flash, jsonify, render_template, request, send_from_directory
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_talisman import Talisman  # type: ignore[import-not-found]
+from flask_wtf import CSRFProtect  # type: ignore[import-not-found]
 
 APP_ROOT = Path(__file__).resolve().parent
 LOGS_DIR = Path("logs")
 LOGS_DIR.mkdir(exist_ok=True)
 LOG_FILE = LOGS_DIR / "webapp.log"
 
+def _build_log_handlers() -> list[logging.Handler]:
+    handlers: list[logging.Handler] = [
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(LOG_FILE, mode="a"),
+    ]
+    try:
+        from pythonjsonlogger import json as jsonlogger
+
+        formatter = jsonlogger.JsonFormatter(
+            "%(asctime)s %(name)s %(levelname)s %(message)s",
+            timestamp=True,
+        )
+    except ImportError:
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
+    for handler in handlers:
+        handler.setFormatter(formatter)
+    return handlers
+
+
 # Configure structured logging
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler(LOG_FILE, mode="a"),
-    ],
+    handlers=_build_log_handlers(),
 )
 logger = logging.getLogger(__name__)
 
@@ -57,27 +77,52 @@ POLICY_VERSION = _policy_version
 OUTPUT_DIR = APP_ROOT / "output"
 
 # Configuration
+MAX_URL_LENGTH = 2048
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10MB max upload
 ALLOWED_EXTENSIONS = {'.csv'}
 HEARTBEAT_TIMEOUT = 15  # Shutdown if no heartbeat for 15 seconds
 REQUEST_TIMEOUT = 30  # Max request processing time
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
-app.secret_key = os.getenv("SECRET_KEY", "phish-detector-dev-key-change-in-production")
+secret_key = os.getenv("SECRET_KEY")
+if not secret_key:
+    if os.getenv("GOJO_ENV") == "production":
+        raise RuntimeError("SECRET_KEY must be set when GOJO_ENV=production")
+    secret_key = "phish-detector-dev-key-change-in-production"
+app.secret_key = secret_key
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 # Reduce static caching so UI changes reflect immediately
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
+csrf = CSRFProtect(app)
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://",
+)
+
+csp = {
+    "default-src": ["'self'"],
+    "style-src": ["'self'", "https://fonts.googleapis.com"],
+    "font-src": ["'self'", "https://fonts.gstatic.com"],
+    "script-src": ["'self'"],
+    "img-src": ["'self'", "data:"],
+}
+Talisman(app, content_security_policy=csp, force_https=False)
 
 # Heartbeat tracking
 _last_heartbeat = time.time()
 _heartbeat_lock = threading.Lock()
 _shutdown_flag = False
+_monitor_started = False
 
 
 @app.route('/favicon.ico')
 def favicon() -> Any:
     """Serve favicon."""
-    return send_from_directory(app.static_folder, 'favicon.png', mimetype='image/png')
+    static_dir = app.static_folder or "static"
+    return send_from_directory(static_dir, "favicon.png", mimetype="image/png")
 
 
 def validate_url(url: str) -> tuple[bool, str]:
@@ -90,8 +135,8 @@ def validate_url(url: str) -> tuple[bool, str]:
     if not url:
         return False, "URL cannot be empty"
     
-    if len(url) > 2048:
-        return False, "URL too long (max 2048 characters)"
+    if len(url) > MAX_URL_LENGTH:
+        return False, f"URL too long (max {MAX_URL_LENGTH} characters)"
     
     # Basic URL parsing check
     try:
@@ -169,6 +214,13 @@ def _checkpoint_status(ml_mode: str) -> dict[str, Any]:
 @app.before_request
 def before_request() -> None:
     """Request preprocessing and security checks."""
+    global _monitor_started
+    if not _monitor_started and not app.testing:
+        if not os.getenv("GOJO_DISABLE_HEARTBEAT"):
+            monitor_thread = threading.Thread(target=_heartbeat_monitor, daemon=True)
+            monitor_thread.start()
+            _monitor_started = True
+
     # Update heartbeat on any request
     with _heartbeat_lock:
         global _last_heartbeat
@@ -203,6 +255,7 @@ def internal_error(e: Any) -> tuple[str, int]:
 
 
 @app.route("/", methods=["GET", "POST"])
+@limiter.limit("30 per minute")
 def index() -> str:
     """Main analysis page."""
     results: dict[str, Any] | None = None
@@ -316,6 +369,7 @@ def index() -> str:
 
 
 @app.route("/download/<path:filename>")
+@limiter.limit("60 per hour")
 def download(filename: str) -> Any:
     """Download analysis results."""
     # Validate filename to prevent directory traversal
@@ -328,6 +382,7 @@ def download(filename: str) -> Any:
 
 
 @app.route("/heartbeat", methods=["POST"])
+@csrf.exempt  # type: ignore[misc]
 def heartbeat() -> tuple[str, int]:
     """Heartbeat endpoint to keep server alive."""
     with _heartbeat_lock:
@@ -337,6 +392,7 @@ def heartbeat() -> tuple[str, int]:
 
 
 @app.route("/goodbye", methods=["POST"])
+@csrf.exempt  # type: ignore[misc]
 def goodbye() -> tuple[str, int]:
     """Signal that client is closing (not refreshing)."""
     logger.info("Client goodbye signal received")
@@ -393,11 +449,13 @@ def _trigger_shutdown() -> None:
     _shutdown_flag = True
     logger.info("Shutdown flag set, server will terminate")
     
-    # Send SIGINT to self (graceful shutdown)
-    if threading.current_thread() is threading.main_thread():
+    # Send SIGINT to self (graceful shutdown) or force-exit for WSGI workers.
+    if __name__ == "__main__" and threading.current_thread() is threading.main_thread():
         raise KeyboardInterrupt()
-    else:
+    try:
         os.kill(os.getpid(), signal.SIGINT)
+    except Exception:
+        os._exit(0)
 
 
 def _heartbeat_monitor() -> None:
@@ -421,10 +479,6 @@ _app_start_time = time.time()
 
 
 if __name__ == "__main__":
-    # Start heartbeat monitor thread
-    monitor_thread = threading.Thread(target=_heartbeat_monitor, daemon=True)
-    monitor_thread.start()
-    
     logger.info("Starting Flask application in production mode")
     logger.info(f"Policy version: {POLICY_VERSION}")
     logger.info(f"Max upload size: {MAX_CONTENT_LENGTH // 1024 // 1024}MB")

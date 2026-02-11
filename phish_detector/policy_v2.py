@@ -97,6 +97,7 @@ class ThompsonSamplingPolicy:
         strategy: Literal["thompson", "ucb", "greedy"] = "thompson",
         alpha_prior: float = 1.0,
         beta_prior: float = 1.0,
+        seed: int | None = None,
     ) -> None:
         self.path = Path(path)
         self.strategy = strategy
@@ -105,6 +106,7 @@ class ThompsonSamplingPolicy:
         self.actions = DEFAULT_ACTIONS
         self.policy = self._load()
         self.metrics = self._load_metrics()
+        self._rng = np.random.default_rng(seed)
 
     def _load(self) -> dict[str, Any]:
         """Load policy state from disk."""
@@ -182,7 +184,7 @@ class ThompsonSamplingPolicy:
             failures = float(stats.get("beta", self.beta_prior))
             
             # Sample from Beta(alpha, beta)
-            sample = float(np.random.beta(successes, failures))
+            sample = float(self._rng.beta(successes, failures))
             samples[action] = sample
         
         best_action = float(max(samples, key=samples.get))  # type: ignore[arg-type]

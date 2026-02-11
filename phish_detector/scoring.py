@@ -4,6 +4,9 @@ from dataclasses import dataclass
 
 from phish_detector.rules import RuleHit
 
+GREEN_MAX_SCORE = 25
+YELLOW_MAX_SCORE = 60
+
 
 @dataclass(frozen=True)
 class ScoreResult:
@@ -13,11 +16,15 @@ class ScoreResult:
 
 
 def label_for_score(score: int) -> str:
-    if score <= 25:
+    if score <= GREEN_MAX_SCORE:
         return "green"
-    if score <= 60:
+    if score <= YELLOW_MAX_SCORE:
         return "yellow"
     return "red"
+
+
+def binary_label_for_score(score: int) -> str:
+    return "phish" if score > YELLOW_MAX_SCORE else "legit"
 
 
 def compute_score(hits: list[RuleHit]) -> ScoreResult:

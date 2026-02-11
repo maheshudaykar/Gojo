@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Mapping
 
@@ -36,8 +37,8 @@ FEATURE_SCHEMA = [
 ]
 
 
-def load_suspicious_tlds(extra_tlds: Iterable[str] | None = None) -> set[str]:
-    """Load suspicious TLDs from configs/suspicious_tlds.txt."""
+@lru_cache(maxsize=1)
+def _load_suspicious_tlds() -> set[str]:
     root = Path(__file__).resolve().parents[1]
     tld_path = root / "configs" / "suspicious_tlds.txt"
     tlds: set[str] = set()
@@ -47,6 +48,12 @@ def load_suspicious_tlds(extra_tlds: Iterable[str] | None = None) -> set[str]:
             if not entry or entry.startswith("#"):
                 continue
             tlds.add(entry.lstrip("."))
+    return tlds
+
+
+def load_suspicious_tlds(extra_tlds: Iterable[str] | None = None) -> set[str]:
+    """Load suspicious TLDs from configs/suspicious_tlds.txt."""
+    tlds = set(_load_suspicious_tlds())
     if extra_tlds:
         tlds.update(t.strip().lower().lstrip(".") for t in extra_tlds if t.strip())
     return tlds
