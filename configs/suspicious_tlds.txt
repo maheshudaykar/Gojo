@@ -1,0 +1,19 @@
+# Suspicious TLDs (one per line, without dot)
+xyz
+top
+icu
+click
+info
+biz
+live
+site
+online
+link
+shop
+rest
+country
+work
+support
+stream
+monster
+press

@@ -1,0 +1,16 @@
+import unittest
+
+from phish_detector.scoring import label_for_score
+
+
+class TestScoring(unittest.TestCase):
+    def test_label_boundaries(self) -> None:
+        self.assertEqual(label_for_score(0), "green")
+        self.assertEqual(label_for_score(25), "green")
+        self.assertEqual(label_for_score(26), "yellow")
+        self.assertEqual(label_for_score(60), "yellow")
+        self.assertEqual(label_for_score(61), "red")
+
+
+if __name__ == "__main__":
+    unittest.main()

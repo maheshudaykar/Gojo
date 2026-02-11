@@ -1,0 +1,21 @@
+# Common brands for typosquatting checks (one per line)
+paypal
+google
+microsoft
+apple
+amazon
+facebook
+instagram
+whatsapp
+netflix
+twitter
+x
+yahoo
+outlook
+office365
+github
+linkedin
+reddit
+steam
+binance
+coinbase

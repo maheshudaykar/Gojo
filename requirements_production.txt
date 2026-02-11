@@ -1,0 +1,21 @@
+# Production dependencies for Gojo
+
+# Core ML and data processing
+scikit-learn>=1.3.0
+numpy>=1.24.0
+joblib>=1.3.0
+
+# Web framework and WSGI
+Flask>=3.0.0
+waitress>=2.1.2  # Production WSGI server for Windows
+
+# Security enhancements
+Flask-Talisman>=1.1.0  # Security headers
+Flask-Limiter>=3.5.0  # Rate limiting
+itsdangerous>=2.1.0  # Secure token generation
+
+# Logging and monitoring
+python-json-logger>=2.0.7  # Structured JSON logging
+
+# Optional but recommended
+typing-extensions>=4.8.0

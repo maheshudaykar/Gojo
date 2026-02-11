@@ -1,0 +1,368 @@
+:root {
+  --bg: #0c0f14;
+  --panel: #131824;
+  --accent: #4dd2ff;
+  --accent-strong: #2f6bff;
+  --text: #f2f6ff;
+  --muted: #9aa6bf;
+  --danger: #ff5f6d;
+  --warning: #f7b955;
+  --success: #54e0a6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+  background: radial-gradient(circle at top, #1c2230 0%, #0c0f14 55%);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+}
+
+.hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+h1 {
+  font-size: 2.6rem;
+  margin: 8px 0;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+h2 {
+  font-size: 1.5rem;
+  margin: 0 0 16px;
+}
+
+h3 {
+  font-size: 1.1rem;
+  margin: 0 0 12px;
+  color: var(--accent);
+}
+
+.subtitle {
+  color: var(--muted);
+  max-width: 540px;
+}
+
+.panel {
+  background: var(--panel);
+  border-radius: 20px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+}
+
+.panel.verdict {
+  border: 2px solid var(--accent);
+  padding: 32px;
+}
+
+.panel.policy-card {
+  border: 1px solid rgba(77, 210, 255, 0.1);
+}
+
+.verdict-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.verdict-badge {
+  padding: 8px 18px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.verdict-badge.red {
+  background: rgba(255, 95, 109, 0.2);
+  color: var(--danger);
+  border: 2px solid var(--danger);
+}
+
+.verdict-badge.yellow {
+  background: rgba(247, 185, 85, 0.2);
+  color: var(--warning);
+  border: 2px solid var(--warning);
+}
+
+.verdict-badge.green {
+  background: rgba(84, 224, 166, 0.2);
+  color: var(--success);
+  border: 2px solid var(--success);
+}
+
+.verdict-body {
+  display: flex;
+  gap: 32px;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.verdict-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.verdict-message {
+  flex: 1;
+}
+
+.verdict-text {
+  font-size: 1.1rem;
+  margin: 0;
+  padding: 16px;
+  border-radius: 12px;
+}
+
+.verdict-text.danger {
+  background: rgba(255, 95, 109, 0.1);
+  color: var(--danger);
+  border-left: 4px solid var(--danger);
+}
+
+.verdict-text.warning {
+  background: rgba(247, 185, 85, 0.1);
+  color: var(--warning);
+  border-left: 4px solid var(--warning);
+}
+
+.verdict-text.safe {
+  background: rgba(84, 224, 166, 0.1);
+  color: var(--success);
+  border-left: 4px solid var(--success);
+}
+
+details.details-section {
+  margin-top: 24px;
+}
+
+details summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 12px 0;
+  color: var(--accent);
+  list-style: none;
+}
+
+details summary::-webkit-details-marker {
+  display: none;
+}
+
+details summary::before {
+  content: "▶ ";
+  margin-right: 8px;
+}
+
+details[open] summary::before {
+  content: "▼ ";
+}
+
+.signal-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.signal-list li {
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.signal-list .weight {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.mono {
+  font-family: "Courier New", monospace;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.muted-text {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.form {
+  display: grid;
+  gap: 16px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+label {
+  font-weight: 600;
+}
+
+input,
+select {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #232b3a;
+  background: #0f141f;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+select option {
+  padding: 8px;
+}
+
+button {
+  padding: 12px 18px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+  color: #0b0f1a;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+button:hover {
+  transform: translateY(-2px);
+}
+
+.alert {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #25131a;
+  color: var(--danger);
+  margin-bottom: 16px;
+}
+
+.score {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.score-value {
+  font-size: 2.4rem;
+  font-weight: 700;
+}
+
+.score-label {
+  padding: 6px 14px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.score-label.green {
+  background: rgba(84, 224, 166, 0.15);
+  color: var(--success);
+}
+
+.score-label.yellow {
+  background: rgba(247, 185, 85, 0.15);
+  color: var(--warning);
+}
+
+.score-label.red {
+  background: rgba(255, 95, 109, 0.15);
+  color: var(--danger);
+}
+
+.grid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.status-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.status-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.status-value {
+  margin: 6px 0 0;
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.policy-desc {
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
+.status-chip {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  margin: 6px 0 0;
+}
+
+.status-chip.ok {
+  background: rgba(84, 224, 166, 0.15);
+  color: var(--success);
+}
+
+.status-chip.warn {
+  background: rgba(247, 185, 85, 0.15);
+  color: var(--warning);
+}
+
+.download {
+  display: inline-block;
+  margin-top: 12px;
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+@media (max-width: 720px) {
+  .hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .verdict-body {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

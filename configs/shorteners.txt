@@ -1,0 +1,11 @@
+# Known URL shortener domains (one per line)
+bit.ly
+tinyurl.com
+t.co
+ow.ly
+is.gd
+buff.ly
+shorturl.at
+adf.ly
+cutt.ly
+rebrand.ly

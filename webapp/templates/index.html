@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gojo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" href="{{ url_for('static', filename='favicon.png') }}" type="image/png" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Local URL Risk Engine</p>
+          <h1>Gojo</h1>
+          <p class="subtitle">
+            Analyze URLs with hybrid ML, rules, and adaptive policy weights. Use single URLs or upload a CSV.
+          </p>
+        </div>
+      </header>
+
+      {% if results %}
+        <section class="panel verdict">
+          <div class="verdict-header">
+            <h2>Analysis Complete</h2>
+            <span class="verdict-badge {{ results.report.summary.label }}">
+              {{ 'PHISHING DETECTED' if results.report.summary.label == 'red' else 'SUSPICIOUS' if results.report.summary.label == 'yellow' else 'SAFE' }}
+            </span>
+          </div>
+          <div class="verdict-body">
+            <div class="verdict-score">
+              <span class="score-value">{{ results.report.summary.score }}</span>
+              <span class="score-label {{ results.report.summary.label }}">{{ results.report.summary.label }}</span>
+            </div>
+            <div class="verdict-message">
+              {% if results.report.summary.label == 'red' %}
+                <p class="verdict-text danger">⚠️ This URL is likely a phishing attempt. Do not enter any personal information or credentials.</p>
+              {% elif results.report.summary.label == 'yellow' %}
+                <p class="verdict-text warning">⚡ This URL shows suspicious characteristics. Proceed with caution.</p>
+              {% else %}
+                <p class="verdict-text safe">✓ This URL appears legitimate based on current analysis.</p>
+              {% endif %}
+            </div>
+          </div>
+
+          <details class="details-section" open>
+            <summary>Detailed Analysis</summary>
+            <div class="grid">
+              <div>
+                <h3>URL Information</h3>
+                <p><strong>Original:</strong> <span class="mono">{{ results.report.parsed.original }}</span></p>
+                <p><strong>Host:</strong> <span class="mono">{{ results.report.parsed.host }}</span></p>
+                <p><strong>Scheme:</strong> {{ results.report.parsed.scheme }}</p>
+                {% if results.report.parsed.path %}
+                  <p><strong>Path:</strong> <span class="mono">{{ results.report.parsed.path }}</span></p>
+                {% endif %}
+              </div>
+
+              <div>
+                <h3>Risk Breakdown</h3>
+                <p><strong>Rule Score:</strong> {{ results.extra.rule_score }}</p>
+                {% if results.report.ml and results.report.ml.available %}
+                  <p><strong>ML Score:</strong> {{ results.report.ml.score }}</p>
+                  <p><strong>ML Confidence:</strong> {{ (results.report.ml.confidence * 100)|round(1) }}%</p>
+                {% endif %}
+                {% if results.report.policy %}
+                  <p><strong>Policy Weight (ML):</strong> {{ (results.report.policy.weight * 100)|round(0)|int }}%</p>
+                {% endif %}
+              </div>
+
+              <div>
+                <h3>Detection Signals</h3>
+                {% if results.extra.signals %}
+                  <ul class="signal-list">
+                    {% for hit in results.extra.signals %}
+                      <li><strong>{{ hit.name }}</strong>: {{ hit.details }} <span class="weight">(+{{ hit.weight }})</span></li>
+                    {% endfor %}
+                  </ul>
+                {% else %}
+                  <p class="muted-text">No suspicious signals detected.</p>
+                {% endif %}
+              </div>
+
+              <div>
+                <h3>ML Analysis</h3>
+                {% if results.report.ml and results.report.ml.available %}
+                  <p><strong>Mode:</strong> {{ results.report.ml.mode|title }}</p>
+                  {% if results.report.ml.mode == 'ensemble' %}
+                    <p><strong>Lexical:</strong> {{ (results.report.ml.lexical * 100)|round(1) }}%</p>
+                    <p><strong>Char N-gram:</strong> {{ (results.report.ml.char * 100)|round(1) }}%</p>
+                  {% endif %}
+                {% else %}
+                  <p class="muted-text">ML analysis disabled or unavailable.</p>
+                {% endif %}
+              </div>
+            </div>
+          </details>
+        </section>
+      {% endif %}
+
+      {% if bulk %}
+        <section class="panel result">
+          <h2>Bulk Analysis Complete</h2>
+          <p>Processed {{ bulk.count }} URLs.</p>
+          <a class="download" href="{{ url_for('download', filename=bulk.filename) }}">Download CSV Results</a>
+        </section>
+      {% endif %}
+
+      <section class="panel">
+        <h2>Analyze URL</h2>
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <div class="alert">
+              {{ messages[0] }}
+            </div>
+          {% endif %}
+        {% endwith %}
+        <form method="post" enctype="multipart/form-data" class="form">
+          <div class="field">
+            <label for="url">Single URL</label>
+            <input id="url" name="url" type="text" placeholder="https://example.com/login" />
+          </div>
+
+          <div class="field">
+            <label for="file">Bulk CSV (column name: url)</label>
+            <input id="file" name="file" type="file" accept=".csv" />
+          </div>
+
+          <div class="field">
+            <label for="ml_mode">ML Mode</label>
+            <select id="ml_mode" name="ml_mode">
+              <option value="ensemble" {% if ml_mode == 'ensemble' %}selected{% endif %}>
+                Ensemble — Combines lexical + char patterns for best accuracy
+              </option>
+              <option value="lexical" {% if ml_mode == 'lexical' %}selected{% endif %}>
+                Lexical — Analyzes URL structure, length, entropy (fast)
+              </option>
+              <option value="char" {% if ml_mode == 'char' %}selected{% endif %}>
+                Char N-gram — Detects obfuscation and character patterns
+              </option>
+              <option value="none" {% if ml_mode == 'none' %}selected{% endif %}>
+                Rules Only — Fast heuristic checks without ML
+              </option>
+            </select>
+          </div>
+
+          <button type="submit">Analyze</button>
+        </form>
+      </section>
+
+      <section class="panel policy-card">
+        <h2>Active Policy</h2>
+        <p class="policy-desc">The RL agent dynamically blends ML and rule scores based on feedback.</p>
+        <div class="status-grid">
+          <div>
+            <p class="status-label">Current Context</p>
+            <p class="status-value">
+              {% if results and results.report.policy %}
+                {{ results.report.policy.context }}
+              {% else %}
+                No analysis yet
+              {% endif %}
+            </p>
+          </div>
+          <div>
+            <p class="status-label">ML Weight</p>
+            <p class="status-value">
+              {% if results and results.report.policy %}
+                {{ (results.report.policy.weight * 100)|round(0)|int }}%
+              {% else %}
+                60% (default)
+              {% endif %}
+            </p>
+          </div>
+          <div>
+            <p class="status-label">Exploration Rate</p>
+            <p class="status-value">10%</p>
+          </div>
+          <div>
+            <p class="status-label">Models Loaded</p>
+            <p class="status-chip {{ 'ok' if checkpoint.lexical_model and checkpoint.char_model else 'warn' }}">
+              {{ 'ready' if checkpoint.lexical_model and checkpoint.char_model else 'partial' }}
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script>
+      // Heartbeat mechanism to keep server alive while page is active
+      let heartbeatInterval;
+      let isRefreshing = false;
+
+      function sendHeartbeat() {
+        fetch('/heartbeat', { method: 'POST', keepalive: true })
+          .catch(() => {}); // Ignore errors
+      }
+
+      function startHeartbeat() {
+        sendHeartbeat(); // Immediate heartbeat
+        heartbeatInterval = setInterval(sendHeartbeat, 5000); // Every 5 seconds
+      }
+
+      function stopHeartbeat() {
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+        }
+      }
+
+      // Start heartbeat when page loads
+      window.addEventListener('load', startHeartbeat);
+
+      // Detect refresh vs close
+      window.addEventListener('beforeunload', (e) => {
+        // Check if it's a refresh (reload) or actual close
+        if (performance.navigation.type === 1) {
+          isRefreshing = true;
+        }
+        
+        // Send goodbye signal if not refreshing
+        if (!isRefreshing) {
+          navigator.sendBeacon('/goodbye');
+        }
+      });
+
+      // Modern refresh detection
+      if (performance.getEntriesByType('navigation')[0]?.type === 'reload') {
+        isRefreshing = true;
+      }
+    </script>
+  </body>
+</html>

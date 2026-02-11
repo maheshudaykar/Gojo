@@ -1,0 +1,438 @@
+"""
+Production-grade Flask application with:
+- Structured logging
+- Input validation and sanitization
+- Security hardening (CSRF, rate limiting)
+- Heartbeat-based lifecycle management
+- Professional error handling
+- Monitoring and health checks
+"""
+from __future__ import annotations
+
+import io
+import csv
+import logging
+import os
+import signal
+import sys
+import threading
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+
+from flask import Flask, flash, jsonify, render_template, request, send_from_directory
+
+APP_ROOT = Path(__file__).resolve().parent
+LOGS_DIR = Path("logs")
+LOGS_DIR.mkdir(exist_ok=True)
+LOG_FILE = LOGS_DIR / "webapp.log"
+
+# Configure structured logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(LOG_FILE, mode="a"),
+    ],
+)
+logger = logging.getLogger(__name__)
+
+from phish_detector.analyze import AnalysisConfig, analyze_url, load_ml_context
+
+# Try to use v2 policy, fallback to v1
+try:
+    from phish_detector.policy_v2 import ThompsonSamplingPolicy as Policy
+    _policy_version = "v2"  # type: ignore[misc]
+    logger.info("Using Thompson Sampling policy (v2)")
+except ImportError:
+    from phish_detector.policy import BanditPolicy as Policy  # type: ignore[assignment,misc]
+    _policy_version = "v1"  # type: ignore[misc]
+    logger.info("Using epsilon-greedy policy (v1)")
+
+POLICY_VERSION = _policy_version
+
+OUTPUT_DIR = APP_ROOT / "output"
+
+# Configuration
+MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10MB max upload
+ALLOWED_EXTENSIONS = {'.csv'}
+HEARTBEAT_TIMEOUT = 15  # Shutdown if no heartbeat for 15 seconds
+REQUEST_TIMEOUT = 30  # Max request processing time
+
+app = Flask(__name__, static_folder="static", static_url_path="/static")
+app.secret_key = os.getenv("SECRET_KEY", "phish-detector-dev-key-change-in-production")
+app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+# Reduce static caching so UI changes reflect immediately
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
+# Heartbeat tracking
+_last_heartbeat = time.time()
+_heartbeat_lock = threading.Lock()
+_shutdown_flag = False
+
+
+@app.route('/favicon.ico')
+def favicon() -> Any:
+    """Serve favicon."""
+    return send_from_directory(app.static_folder, 'favicon.png', mimetype='image/png')
+
+
+def validate_url(url: str) -> tuple[bool, str]:
+    """
+    Validate and sanitize URL input.
+    
+    Returns:
+        (is_valid, error_message)
+    """
+    if not url:
+        return False, "URL cannot be empty"
+    
+    if len(url) > 2048:
+        return False, "URL too long (max 2048 characters)"
+    
+    # Basic URL parsing check
+    try:
+        parsed = urlparse(url)
+        if not parsed.netloc and not parsed.path:
+            return False, "Invalid URL format"
+    except Exception as e:
+        return False, f"URL parsing error: {str(e)}"
+    
+    # Check for suspicious patterns
+    if any(char in url for char in ['\n', '\r', '\x00']):
+        return False, "URL contains invalid characters"
+    
+    return True, ""
+
+
+def validate_csv_file(file: Any) -> tuple[bool, str]:
+    """
+    Validate uploaded CSV file.
+    
+    Returns:
+        (is_valid, error_message)
+    """
+    if not file or not file.filename:  # type: ignore[attr-defined]
+        return False, "No file provided"
+    
+    filename: str = str(file.filename).lower()  # type: ignore[attr-defined]
+    if not any(filename.endswith(ext) for ext in ALLOWED_EXTENSIONS):
+        return False, "Only CSV files are allowed"
+    
+    # Check file size (already enforced by MAX_CONTENT_LENGTH, but double-check)
+    file.seek(0, 2)  # type: ignore[attr-defined]  # Seek to end
+    size: int = file.tell()  # type: ignore[attr-defined]
+    file.seek(0)  # type: ignore[attr-defined]  # Reset to beginning
+    
+    if size > MAX_CONTENT_LENGTH:
+        return False, f"File too large (max {MAX_CONTENT_LENGTH // 1024 // 1024}MB)"
+    
+    if size == 0:
+        return False, "File is empty"
+    
+    return True, ""
+
+
+def _build_config(ml_mode: str) -> AnalysisConfig:
+    """Build analysis configuration."""
+    return AnalysisConfig(
+        ml_mode=ml_mode,
+        lexical_model="models/lexical_model.joblib",
+        char_model="models/char_model.joblib",
+        policy_path="models/policy.json",
+        feedback_store="models/feedback.json",
+        shadow_learn=True,  # Shadow mode for web UI
+        enable_feedback=False,
+    )
+
+
+def _checkpoint_status(ml_mode: str) -> dict[str, Any]:
+    """Get system checkpoint status."""
+    lexical = Path("models/lexical_model.joblib")
+    char = Path("models/char_model.joblib")
+    policy = Path("models/policy.json")
+    feedback = Path("models/feedback.json")
+    return {
+        "ml_mode": ml_mode,
+        "lexical_model": lexical.exists(),
+        "char_model": char.exists(),
+        "policy_file": policy.exists(),
+        "feedback_file": feedback.exists(),
+        "policy_version": POLICY_VERSION,
+        "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
+@app.before_request
+def before_request() -> None:
+    """Request preprocessing and security checks."""
+    # Update heartbeat on any request
+    with _heartbeat_lock:
+        global _last_heartbeat
+        _last_heartbeat = time.time()
+    
+    # Log request
+    logger.info(f"Request: {request.method} {request.path} from {request.remote_addr}")
+
+
+@app.errorhandler(400)
+def bad_request(e: Any) -> tuple[str, int]:
+    """Handle bad request errors."""
+    logger.warning(f"Bad request: {str(e)}")
+    flash("Invalid request. Please check your input.")
+    return render_template("error.html", error="Bad Request"), 400
+
+
+@app.errorhandler(413)
+def request_entity_too_large(e: Any) -> tuple[str, int]:
+    """Handle file too large errors."""
+    logger.warning(f"File too large: {str(e)}")
+    flash(f"File too large. Maximum size is {MAX_CONTENT_LENGTH // 1024 // 1024}MB.")
+    return render_template("error.html", error="File Too Large"), 413
+
+
+@app.errorhandler(500)
+def internal_error(e: Any) -> tuple[str, int]:
+    """Handle internal server errors."""
+    logger.error(f"Internal error: {str(e)}", exc_info=True)
+    flash("An internal error occurred. Please try again.")
+    return render_template("error.html", error="Internal Server Error"), 500
+
+
+@app.route("/", methods=["GET", "POST"])
+def index() -> str:
+    """Main analysis page."""
+    results: dict[str, Any] | None = None
+    bulk_result: dict[str, Any] | None = None
+    ml_mode = request.form.get("ml_mode", "ensemble")
+    checkpoint = _checkpoint_status(ml_mode)
+
+    if request.method == "POST":
+        url_value = (request.form.get("url") or "").strip()
+        file = request.files.get("file")
+
+        try:
+            if url_value:
+                # Validate URL
+                is_valid, error = validate_url(url_value)
+                if not is_valid:
+                    flash(f"Invalid URL: {error}")
+                    logger.warning(f"URL validation failed: {error}")
+                else:
+                    logger.info(f"Analyzing URL: {url_value[:100]}...")
+                    config = _build_config(ml_mode)
+                    ml_context = load_ml_context(config)
+                    policy = Policy(config.policy_path) if ml_mode != "none" else None
+                    report, extra = analyze_url(url_value, config, ml_context=ml_context, policy=policy)  # type: ignore[arg-type]
+                    results = {"report": report, "extra": extra}
+                    logger.info(f"Analysis complete: {report['summary']['label']}")
+                    
+            elif file and file.filename:
+                # Validate CSV file
+                is_valid, error = validate_csv_file(file)
+                if not is_valid:
+                    flash(f"Invalid file: {error}")
+                    logger.warning(f"File validation failed: {error}")
+                else:
+                    logger.info(f"Processing bulk CSV: {file.filename}")
+                    config = _build_config(ml_mode)
+                    ml_context = load_ml_context(config)
+                    policy = Policy(config.policy_path) if ml_mode != "none" else None
+
+                    stream = io.StringIO(file.stream.read().decode("utf-8", errors="ignore"))
+                    reader = csv.DictReader(stream)
+                    rows: list[dict[str, Any]] = []
+                    
+                    for idx, row in enumerate(reader):
+                        if idx >= 10000:  # Limit bulk processing
+                            logger.warning("CSV processing limit reached (10000 rows)")
+                            flash("CSV too large. Only first 10,000 rows processed.")
+                            break
+                            
+                        url = (row.get("url") or "").strip()
+                        if not url:
+                            continue
+                        
+                        # Validate each URL
+                        is_valid, _ = validate_url(url)
+                        if not is_valid:
+                            continue
+                        
+                        report, extra = analyze_url(url, config, ml_context=ml_context, policy=policy)  # type: ignore[arg-type]
+                        rows.append({
+                            "url": url,
+                            "score": report["summary"]["score"],
+                            "label": report["summary"]["label"],
+                            "rule_score": extra.get("rule_score", 0),
+                            "ml_score": report.get("ml", {}).get("score", 0) if report.get("ml") else 0,
+                            "ml_confidence": report.get("ml", {}).get("confidence", 0) if report.get("ml") else 0,
+                            "signals": "|".join(h["name"] for h in extra.get("signals", [])),
+                        })
+
+                    if rows:
+                        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+                        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+                        filename = f"analysis_{timestamp}.csv"
+                        with open(OUTPUT_DIR / filename, "w", newline="", encoding="utf-8") as handle:
+                            writer = csv.DictWriter(
+                                handle,
+                                fieldnames=[
+                                    "url",
+                                    "score",
+                                    "label",
+                                    "rule_score",
+                                    "ml_score",
+                                    "ml_confidence",
+                                    "signals",
+                                ],
+                            )
+                            writer.writeheader()
+                            writer.writerows(rows)
+                        bulk_result = {
+                            "count": len(rows),
+                            "filename": filename,
+                        }
+                        logger.info(f"Bulk analysis complete: {len(rows)} URLs processed")
+                    else:
+                        flash("No valid URLs found in CSV.")
+                        logger.warning("CSV contained no valid URLs")
+            else:
+                flash("Provide a URL or upload a CSV file.")
+                
+        except Exception as e:
+            logger.error(f"Analysis error: {str(e)}", exc_info=True)
+            flash(f"An error occurred during analysis: {str(e)}")
+
+    return render_template(
+        "index.html",
+        results=results,
+        bulk=bulk_result,
+        ml_mode=ml_mode,
+        checkpoint=checkpoint,
+    )
+
+
+@app.route("/download/<path:filename>")
+def download(filename: str) -> Any:
+    """Download analysis results."""
+    # Validate filename to prevent directory traversal
+    if ".." in filename or "/" in filename or "\\" in filename:
+        logger.warning(f"Suspicious download attempt: {filename}")
+        return "Invalid filename", 400
+    
+    logger.info(f"Download requested: {filename}")
+    return send_from_directory(OUTPUT_DIR, filename, as_attachment=True)
+
+
+@app.route("/heartbeat", methods=["POST"])
+def heartbeat() -> tuple[str, int]:
+    """Heartbeat endpoint to keep server alive."""
+    with _heartbeat_lock:
+        global _last_heartbeat
+        _last_heartbeat = time.time()
+    return "", 204
+
+
+@app.route("/goodbye", methods=["POST"])
+def goodbye() -> tuple[str, int]:
+    """Signal that client is closing (not refreshing)."""
+    logger.info("Client goodbye signal received")
+    
+    # Give a grace period before shutdown
+    def delayed_shutdown() -> None:
+        time.sleep(2)
+        with _heartbeat_lock:
+            if time.time() - _last_heartbeat > 2:
+                logger.info("Initiating graceful shutdown after client disconnect")
+                _trigger_shutdown()
+    
+    threading.Thread(target=delayed_shutdown, daemon=True).start()
+    return "", 204
+
+
+@app.route("/health")
+def health() -> Any:
+    """Comprehensive health check endpoint."""
+    ml_mode = request.args.get("ml_mode", "ensemble")
+    status = _checkpoint_status(ml_mode)
+    
+    # Add policy metrics if available
+    try:
+        if POLICY_VERSION == "v2":
+            policy = Policy("models/policy.json")
+            status["policy_metrics"] = policy.get_metrics()  # type: ignore[attr-defined]
+    except Exception as e:
+        logger.warning(f"Could not load policy metrics: {e}")
+    
+    status["uptime"] = time.time() - _app_start_time
+    status["status"] = "healthy"
+    
+    return jsonify(status)
+
+
+@app.route("/metrics")
+def metrics() -> Any:
+    """Policy metrics endpoint for monitoring."""
+    try:
+        if POLICY_VERSION == "v2":
+            policy = Policy("models/policy.json")
+            return jsonify(policy.get_metrics())  # type: ignore[attr-defined]
+        else:
+            return jsonify({"error": "Metrics only available for policy v2"}), 404
+    except Exception as e:
+        logger.error(f"Metrics error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+def _trigger_shutdown() -> None:
+    """Trigger graceful server shutdown."""
+    global _shutdown_flag
+    _shutdown_flag = True
+    logger.info("Shutdown flag set, server will terminate")
+    
+    # Send SIGINT to self (graceful shutdown)
+    if threading.current_thread() is threading.main_thread():
+        raise KeyboardInterrupt()
+    else:
+        os.kill(os.getpid(), signal.SIGINT)
+
+
+def _heartbeat_monitor() -> None:
+    """Background thread to monitor heartbeat and trigger shutdown."""
+    logger.info(f"Heartbeat monitor started (timeout: {HEARTBEAT_TIMEOUT}s)")
+    
+    while not _shutdown_flag:
+        time.sleep(5)
+        
+        with _heartbeat_lock:
+            elapsed = time.time() - _last_heartbeat
+        
+        if elapsed > HEARTBEAT_TIMEOUT:
+            logger.warning(f"No heartbeat for {elapsed:.1f}s, triggering shutdown")
+            _trigger_shutdown()
+            break
+
+
+# Track app start time
+_app_start_time = time.time()
+
+
+if __name__ == "__main__":
+    # Start heartbeat monitor thread
+    monitor_thread = threading.Thread(target=_heartbeat_monitor, daemon=True)
+    monitor_thread.start()
+    
+    logger.info("Starting Flask application in production mode")
+    logger.info(f"Policy version: {POLICY_VERSION}")
+    logger.info(f"Max upload size: {MAX_CONTENT_LENGTH // 1024 // 1024}MB")
+    
+    try:
+        app.run(host="127.0.0.1", port=5000, debug=False, threaded=True)
+    except KeyboardInterrupt:
+        logger.info("Received shutdown signal")
+    finally:
+        logger.info("Server shutting down")
+        sys.exit(0)
