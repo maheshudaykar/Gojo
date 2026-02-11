@@ -4,12 +4,16 @@ from dataclasses import dataclass
 import logging
 from typing import Any, Protocol
 
+from phish_detector.brand_risk import compute_brand_typo_risk
+from phish_detector.enrichment import get_domain_enrichment
 from phish_detector.feedback import create_entry, record_pending, resolve_feedback
 from phish_detector.parsing import parse_url
 from phish_detector.policy import BanditPolicy, DEFAULT_WEIGHT
 from phish_detector.report import build_report
-from phish_detector.rules import evaluate_rules
+from phish_detector.rules import RuleHit, evaluate_rules
 from phish_detector.scoring import binary_label_for_score, combine_scores, compute_score
+from phish_detector.policy import context_from_scores
+from phish_detector.typosquat import detect_typosquatting
 
 
 # Protocol for policy compatibility (supports both v1 and v2)
@@ -72,6 +76,27 @@ def analyze_url(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     parsed = parse_url(url)
     features, hits = evaluate_rules(parsed)
+    enrichment = get_domain_enrichment(parsed.host, parsed.original)
+    typo_match = detect_typosquatting(parsed)
+    brand_risk = compute_brand_typo_risk(parsed, features, typo_match, enrichment)
+    if typo_match:
+        if brand_risk.score >= 75 and brand_risk.corroborating:
+            hits.append(
+                RuleHit(
+                    "brand_typo_contextual_high",
+                    18,
+                    f"Brand typo risk {brand_risk.score:.1f} corroborated by {', '.join(brand_risk.corroborating)}",
+                )
+            )
+        elif brand_risk.score >= 45:
+            hits.append(
+                RuleHit(
+                    "brand_typo_contextual",
+                    10,
+                    f"Brand typo risk {brand_risk.score:.1f}",
+                )
+            )
+
     rule_score = compute_score(hits)
 
     ml_info: dict[str, Any] = {"mode": config.ml_mode, "available": False}
@@ -124,7 +149,26 @@ def analyze_url(
     if ml_score is not None:
         if policy is None:
             policy = BanditPolicy(config.policy_path)
-        decision = policy.select_action(ml_confidence, rule_score.score)  # type: ignore[union-attr]
+        context_parts = [
+            "typo1" if typo_match else "typo0",
+            "intent1" if brand_risk.components["I"] >= 0.5 else "intent0",
+        ]
+        age_bucket = "age_unknown"
+        if enrichment.age_days is not None:
+            if enrichment.age_days < 30:
+                age_bucket = "age_new"
+            elif enrichment.age_days < 365:
+                age_bucket = "age_mid"
+            else:
+                age_bucket = "age_old"
+        rep_bucket = "rep_low" if enrichment.reputation_trust < 0.35 else "rep_high" if enrichment.reputation_trust > 0.7 else "rep_mid"
+        context_parts.extend([age_bucket, rep_bucket])
+        context_override = f"{context_from_scores(ml_confidence, rule_score.score)}|" + "|".join(context_parts)
+        decision = policy.select_action(
+            ml_confidence,
+            rule_score.score,
+            context_override=context_override,
+        )  # type: ignore[union-attr]
         weight = DEFAULT_WEIGHT if config.shadow_learn else decision.action
         policy_info = {
             "weight": weight,
@@ -188,12 +232,46 @@ def analyze_url(
                 record_pending(entry, config.feedback_store)
                 feedback_info = {"status": "pending", "id": entry.id}
 
-    report: dict[str, Any] = build_report(parsed, features, final_score, ml_info, policy_info, feedback_info)
+    report: dict[str, Any] = build_report(
+        parsed,
+        features,
+        final_score,
+        ml_info,
+        policy_info,
+        feedback_info,
+        context_info={
+            "brand_typo_risk": brand_risk.score,
+            "brand_typo_components": brand_risk.components,
+            "brand_typo_corroborating": brand_risk.corroborating,
+            "domain_enrichment": {
+                "registrable_domain": enrichment.registrable_domain,
+                "age_days": enrichment.age_days,
+                "age_trust": enrichment.age_trust,
+                "asn": enrichment.asn,
+                "asn_org": enrichment.asn_org,
+                "reputation_trust": enrichment.reputation_trust,
+                "reputation_reasons": enrichment.reputation_reasons,
+                "volatility_score": enrichment.volatility_score,
+                "ip_addresses": enrichment.ip_addresses,
+            },
+        },
+    )
     extra: dict[str, Any] = {
         "rule_score": rule_score.score,
         "ml_score": ml_score,
         "ml_confidence": ml_confidence,
         "policy_weight": weight if policy_info else None,
+        "brand_typo_risk": brand_risk.score,
+        "brand_typo_components": brand_risk.components,
+        "domain_enrichment": {
+            "registrable_domain": enrichment.registrable_domain,
+            "age_days": enrichment.age_days,
+            "age_trust": enrichment.age_trust,
+            "reputation_trust": enrichment.reputation_trust,
+            "reputation_reasons": enrichment.reputation_reasons,
+            "volatility_score": enrichment.volatility_score,
+            "ip_addresses": enrichment.ip_addresses,
+        },
         "signals": [
             {"name": hit.name, "details": hit.details, "weight": hit.weight} for hit in hits
         ],

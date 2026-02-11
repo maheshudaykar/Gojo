@@ -63,6 +63,7 @@ Built for **real-world deployment**, this tool achieves **96% accuracy** while r
 - 🏥 **Health Endpoints**: `/health` and `/metrics` for observability
 - 🔄 **Auto-Shutdown**: Browser lifecycle management
 - 🌐 **WSGI Ready**: Deploy with Waitress/Gunicorn
+- 🧭 **Domain Enrichment**: RDAP-based age/ASN + DNS volatility signals
 
 ---
 
@@ -171,6 +172,12 @@ report, extra = analyze_url("https://suspicious-url.com", config, ml_context, po
 print(f"Score: {report['summary']['score']}")
 print(f"Label: {report['summary']['label']}")  # green/yellow/red
 ```
+
+### Enrichment Notes
+
+- Domain age/ASN are fetched via RDAP (public, no key required).
+- DNS volatility is computed using public resolvers.
+- Optional Google Safe Browsing: set `GOJO_GSB_API_KEY` to enable reputation checks.
 
 ---
 

@@ -3,20 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from phish_detector.features import FeatureValue, extract_features, load_suspicious_tlds
+from phish_detector.intent import find_intent_tokens
 from phish_detector.parsing import ParsedURL
 from phish_detector.typosquat import detect_typosquatting
-
-_SUSPICIOUS_TOKENS = {
-    "secure",
-    "verify",
-    "account",
-    "login",
-    "update",
-    "password",
-    "billing",
-    "confirm",
-    "wallet",
-}
 
 _SAFE_PORTS = {80, 443}
 
@@ -76,8 +65,8 @@ def evaluate_rules(parsed: ParsedURL) -> tuple[dict[str, FeatureValue], list[Rul
     if parsed.port and parsed.port not in _SAFE_PORTS:
         hits.append(RuleHit("uncommon_port", 6, f"Port {parsed.port} is uncommon"))
 
-    text_blob = f"{parsed.host}{parsed.path}{parsed.query}".lower()
-    matched_tokens = sorted({token for token in _SUSPICIOUS_TOKENS if token in text_blob})
+    text_blob = f"{parsed.host}{parsed.path}{parsed.query}"
+    matched_tokens = find_intent_tokens(text_blob)
     if matched_tokens:
         hits.append(
             RuleHit(
@@ -95,7 +84,7 @@ def evaluate_rules(parsed: ParsedURL) -> tuple[dict[str, FeatureValue], list[Rul
         hits.append(
             RuleHit(
                 "typosquat",
-                20,
+                15,
                 (
                     f"Looks like '{typosquat.brand}' (candidate '{typosquat.candidate}', "
                     f"distance {typosquat.distance}, {typosquat.method})"

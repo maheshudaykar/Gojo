@@ -238,6 +238,7 @@ class ThompsonSamplingPolicy:
         ml_confidence: float,
         rule_score: int,
         strategy: Literal["thompson", "ucb", "greedy"] | None = None,
+        context_override: str | None = None,
     ) -> PolicyDecision:
         """
         Select action based on current context and strategy.
@@ -250,7 +251,7 @@ class ThompsonSamplingPolicy:
         Returns:
             PolicyDecision with action, context, and metadata
         """
-        context = _context_from_scores(ml_confidence, rule_score)
+        context = context_override or _context_from_scores(ml_confidence, rule_score)
         context_data = self.policy.get("contexts", {}).get(context, {})
         strategy_used = strategy or self.strategy
         

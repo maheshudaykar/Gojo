@@ -14,6 +14,7 @@ def build_report(
     ml_info: dict[str, Any] | None = None,
     policy_info: dict[str, Any] | None = None,
     feedback_info: dict[str, Any] | None = None,
+    context_info: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     report: dict[str, Any] = {
         "summary": {
@@ -30,4 +31,6 @@ def build_report(
         report["policy"] = policy_info
     if feedback_info is not None:
         report["feedback"] = feedback_info
+    if context_info is not None:
+        report["context"] = context_info
     return report

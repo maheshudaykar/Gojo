@@ -38,6 +38,10 @@ def _context_from_scores(ml_confidence: float, rule_score: int) -> str:
     return f"{ml_bucket}|{rule_bucket}"
 
 
+def context_from_scores(ml_confidence: float, rule_score: int) -> str:
+    return _context_from_scores(ml_confidence, rule_score)
+
+
 class BanditPolicy:
     def __init__(self, path: str, epsilon: float = DEFAULT_EPSILON) -> None:
         self.path = Path(path)
@@ -72,8 +76,9 @@ class BanditPolicy:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(self.policy, indent=2), encoding="utf-8")
 
-    def select_action(self, ml_confidence: float, rule_score: int) -> PolicyDecision:
-        context = _context_from_scores(ml_confidence, rule_score)
+    def select_action(self, ml_confidence: float, rule_score: int, **kwargs: Any) -> PolicyDecision:
+        context_override = kwargs.get("context_override")
+        context = context_override or _context_from_scores(ml_confidence, rule_score)
         context_data = self.policy.get("contexts", {}).get(context)
         if random.random() < self.epsilon or not context_data:
             return PolicyDecision(action=DEFAULT_WEIGHT, context=context, epsilon=self.epsilon)

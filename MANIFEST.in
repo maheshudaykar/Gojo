@@ -16,6 +16,9 @@ include pyproject.toml
 include run_gojo.bat
 include migrate_policy.py
 
+# Include config files
+recursive-include configs *.txt
+
 # Include type information
 recursive-include phish_detector py.typed
 

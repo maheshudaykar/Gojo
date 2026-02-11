@@ -118,3 +118,14 @@ def parse_url(url: str, shortener_hosts: Optional[Iterable[str]] = None) -> Pars
         has_encoded_chars=bool(_ENCODED_RE.search(original)),
         decoded_url=decoded_url,
     )
+
+
+def get_registrable_domain(host: str) -> str:
+    parts = [part for part in host.split(".") if part]
+    if len(parts) < 2:
+        return host
+    tld = parts[-1]
+    sld = parts[-2]
+    if len(tld) == 2 and sld in {"co", "com", "net", "org", "gov", "edu"} and len(parts) >= 3:
+        return ".".join(parts[-3:])
+    return ".".join(parts[-2:])

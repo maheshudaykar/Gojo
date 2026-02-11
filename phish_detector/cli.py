@@ -65,9 +65,9 @@ def _build_config(args: argparse.Namespace, enable_feedback: bool) -> AnalysisCo
     )
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -81,59 +81,61 @@ def main() -> int:
     if args.input_csv:
         if not args.output:
             raise SystemExit("Bulk mode requires --output")
+        reports: list[dict[str, Any]] = []
         with open(args.input_csv, "r", encoding="utf-8", newline="") as handle:
             reader = csv.DictReader(handle)
-        reports: list[dict[str, Any]] = []
-        with open(args.output, "w", encoding="utf-8", newline="") as out_handle:
-            writer: csv.DictWriter[str] | None = None
-            if args.output_format == "csv":
-                writer = csv.DictWriter(
-                    out_handle,
-                    fieldnames=[
-                        "url",
-                        "score",
-                        "label",
-                        "rule_score",
-                        "ml_score",
-                        "ml_confidence",
-                        "policy_weight",
-                        "signals",
-                    ],
-                )
-                writer.writeheader()
-            for row in reader:
-                url = (row.get(args.url_col) or "").strip()
-                if not url:
-                    logging.warning("Skipping row without URL")
-                    continue
-                report, extra = analyze_url(
-                    url,
-                    _build_config(args, enable_feedback=False),
-                    ml_context=ml_context,
-                    policy=policy,
-                )
-                summary = report["summary"]
+            with open(args.output, "w", encoding="utf-8", newline="") as out_handle:
+                writer: csv.DictWriter[str] | None = None
                 if args.output_format == "csv":
-                    if writer is None:
-                        raise RuntimeError("CSV writer was not initialized.")
-                    writer.writerow(
-                        {
-                            "url": url,
-                            "score": summary["score"],
-                            "label": summary["label"],
-                            "rule_score": extra["rule_score"],
-                            "ml_score": extra["ml_score"],
-                            "ml_confidence": f"{extra['ml_confidence']:.4f}",
-                            "policy_weight": extra["policy_weight"],
-                            "signals": ";".join(hit["name"] for hit in extra["signals"]),
-                        }
+                    writer = csv.DictWriter(
+                        out_handle,
+                        fieldnames=[
+                            "url",
+                            "score",
+                            "label",
+                            "rule_score",
+                            "ml_score",
+                            "ml_confidence",
+                            "policy_weight",
+                            "signals",
+                            "brand_typo_risk",
+                        ],
                     )
-                elif args.output_format == "jsonl":
-                    out_handle.write(json.dumps(report) + "\n")
-                else:
-                    reports.append(report)
-            if args.output_format == "json":
-                out_handle.write(json.dumps(reports, indent=2))
+                    writer.writeheader()
+                for row in reader:
+                    url = (row.get(args.url_col) or "").strip()
+                    if not url:
+                        logging.warning("Skipping row without URL")
+                        continue
+                    report, extra = analyze_url(
+                        url,
+                        _build_config(args, enable_feedback=False),
+                        ml_context=ml_context,
+                        policy=policy,
+                    )
+                    summary = report["summary"]
+                    if args.output_format == "csv":
+                        if writer is None:
+                            raise RuntimeError("CSV writer was not initialized.")
+                        writer.writerow(
+                            {
+                                "url": url,
+                                "score": summary["score"],
+                                "label": summary["label"],
+                                "rule_score": extra["rule_score"],
+                                "ml_score": extra["ml_score"],
+                                "ml_confidence": f"{extra['ml_confidence']:.4f}",
+                                "policy_weight": extra["policy_weight"],
+                                "signals": ";".join(hit["name"] for hit in extra["signals"]),
+                                "brand_typo_risk": f"{extra.get('brand_typo_risk', 0.0):.2f}",
+                            }
+                        )
+                    elif args.output_format == "jsonl":
+                        out_handle.write(json.dumps(report) + "\n")
+                    else:
+                        reports.append(report)
+                if args.output_format == "json":
+                    out_handle.write(json.dumps(reports, indent=2))
     else:
         report, extra = analyze_url(
             args.url,

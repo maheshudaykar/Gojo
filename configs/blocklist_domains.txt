@@ -1,0 +1,2 @@
+# Known malicious domains (one per line). Example:
+# bad-example.com

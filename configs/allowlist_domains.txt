@@ -1,0 +1,2 @@
+# Known trusted domains (one per line). Example:
+# example.com

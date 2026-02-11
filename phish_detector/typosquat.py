@@ -19,6 +19,35 @@ _HOMOGLYPH_REPLACEMENTS = (
     ("!", "i"),
 )
 
+_KEYBOARD_ADJACENT = {
+    "a": set("qwsz"),
+    "b": set("vghn"),
+    "c": set("xdfv"),
+    "d": set("ersfxc"),
+    "e": set("wsdr"),
+    "f": set("rtgdvc"),
+    "g": set("tyfhvb"),
+    "h": set("yugjbn"),
+    "i": set("ujko"),
+    "j": set("uikhnm"),
+    "k": set("ioljmn"),
+    "l": set("opk"),
+    "m": set("njk"),
+    "n": set("bhjm"),
+    "o": set("iklp"),
+    "p": set("ol"),
+    "q": set("wa"),
+    "r": set("edft"),
+    "s": set("wedxza"),
+    "t": set("rfgy"),
+    "u": set("yhji"),
+    "v": set("cfgb"),
+    "w": set("qase"),
+    "x": set("zsdc"),
+    "y": set("tghu"),
+    "z": set("asx"),
+}
+
 
 @dataclass(frozen=True)
 class TyposquatMatch:
@@ -80,6 +109,58 @@ def _levenshtein(a: str, b: str) -> int:
     return previous[-1]
 
 
+def _damerau_levenshtein(a: str, b: str) -> int:
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+
+    d: dict[tuple[int, int], int] = {}
+    len_a = len(a)
+    len_b = len(b)
+    max_dist = len_a + len_b
+    d[(0, 0)] = max_dist
+    for i in range(0, len_a + 1):
+        d[(i + 1, 1)] = i
+        d[(i + 1, 0)] = max_dist
+    for j in range(0, len_b + 1):
+        d[(1, j + 1)] = j
+        d[(0, j + 1)] = max_dist
+
+    last_row: dict[str, int] = {}
+    for i in range(1, len_a + 1):
+        db = 0
+        for j in range(1, len_b + 1):
+            i1 = last_row.get(b[j - 1], 0)
+            j1 = db
+            cost = 0 if a[i - 1] == b[j - 1] else 1
+            if cost == 0:
+                db = j
+
+            d[(i + 1, j + 1)] = min(
+                d[(i, j)] + cost,
+                d[(i + 1, j)] + 1,
+                d[(i, j + 1)] + 1,
+                d[(i1, j1)] + (i - i1 - 1) + 1 + (j - j1 - 1),
+            )
+        last_row[a[i - 1]] = i
+    return d[(len_a + 1, len_b + 1)]
+
+
+def keyboard_adjacent_score(a: str, b: str) -> float:
+    if len(a) != len(b):
+        return 0.0
+    diff = [(ca, cb) for ca, cb in zip(a, b) if ca != cb]
+    if len(diff) != 1:
+        return 0.0
+    src, dest = diff[0]
+    if src in _KEYBOARD_ADJACENT and dest in _KEYBOARD_ADJACENT[src]:
+        return 0.8
+    return 0.0
+
+
 def detect_typosquatting(parsed: ParsedURL) -> TyposquatMatch | None:
     brands = load_brand_list()
     if not brands:
@@ -120,11 +201,17 @@ def detect_typosquatting(parsed: ParsedURL) -> TyposquatMatch | None:
             normalized = _normalize_homoglyphs(candidate)
             distance = _levenshtein(candidate, brand)
             norm_distance = _levenshtein(normalized, brand)
-            effective_distance = min(distance, norm_distance)
+            trans_distance = _damerau_levenshtein(candidate, brand)
+            effective_distance = min(distance, norm_distance, trans_distance)
             threshold = 1 if len(brand) <= 5 else 2
 
             if effective_distance <= threshold:
-                method = "homoglyph" if norm_distance < distance else "edit_distance"
+                if trans_distance < min(distance, norm_distance):
+                    method = "transposition"
+                elif norm_distance < distance:
+                    method = "homoglyph"
+                else:
+                    method = "edit_distance"
                 match = TyposquatMatch(
                     brand=brand,
                     candidate=candidate,

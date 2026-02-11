@@ -1,6 +1,9 @@
 """Gojo phishing URL detector package."""
 
 from . import analyze
+from . import brand_risk
+from . import enrichment
+from . import intent
 from . import feedback
 from . import features
 from . import ml_char_ngram
@@ -28,4 +31,7 @@ __all__ = [
 	"policy_v2",
 	"feedback",
 	"analyze",
+	"brand_risk",
+	"enrichment",
+	"intent",
 ]
