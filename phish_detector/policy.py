@@ -18,6 +18,8 @@ class PolicyDecision:
     action: float
     context: str
     epsilon: float
+    propensity: float
+    source: str
 
 
 def _context_from_scores(ml_confidence: float, rule_score: int) -> str:
@@ -80,8 +82,14 @@ class BanditPolicy:
         context_override = kwargs.get("context_override")
         context = context_override or _context_from_scores(ml_confidence, rule_score)
         context_data = self.policy.get("contexts", {}).get(context)
-        if random.random() < self.epsilon or not context_data:
-            return PolicyDecision(action=DEFAULT_WEIGHT, context=context, epsilon=self.epsilon)
+        if not context_data:
+            return PolicyDecision(
+                action=DEFAULT_WEIGHT,
+                context=context,
+                epsilon=self.epsilon,
+                propensity=1.0,
+                source="default",
+            )
 
         best_action = DEFAULT_WEIGHT
         best_value = float("-inf")
@@ -90,7 +98,28 @@ class BanditPolicy:
             if stats["value"] > best_value:
                 best_value = stats["value"]
                 best_action = action
-        return PolicyDecision(action=best_action, context=context, epsilon=self.epsilon)
+
+        explore = random.random() < self.epsilon
+        if explore:
+            action = random.choice(self.actions)
+            source = "explore"
+        else:
+            action = best_action
+            source = "exploit"
+
+        uniform = self.epsilon / max(len(self.actions), 1)
+        if action == best_action:
+            propensity = (1.0 - self.epsilon) + uniform
+        else:
+            propensity = uniform
+
+        return PolicyDecision(
+            action=action,
+            context=context,
+            epsilon=self.epsilon,
+            propensity=propensity,
+            source=source,
+        )
 
     def update(self, context: str, action: float, reward: float) -> None:
         self._snapshot()

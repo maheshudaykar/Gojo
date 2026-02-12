@@ -18,6 +18,15 @@ class BrandRiskResult:
     typo_match: TyposquatMatch | None
 
 
+@dataclass(frozen=True)
+class BrandRiskConfig:
+    enable_typo: bool = True
+    enable_intent: bool = True
+    enable_age: bool = True
+    enable_reputation: bool = True
+    enable_volatility: bool = True
+
+
 def _sigmoid(value: float) -> float:
     return 1.0 / (1.0 + math.exp(-value))
 
@@ -40,9 +49,11 @@ def compute_brand_typo_risk(
     features: dict[str, Any],
     match: TyposquatMatch | None,
     enrichment: DomainEnrichment,
+    config: BrandRiskConfig | None = None,
 ) -> BrandRiskResult:
+    config = config or BrandRiskConfig()
     intent_tokens = find_intent_tokens(f"{parsed.path}{parsed.query}")
-    intent_score = 1.0 if intent_tokens else 0.0
+    intent_score = 1.0 if intent_tokens and config.enable_intent else 0.0
 
     entropy = float(features.get("host_entropy", 0.0))
     if entropy >= 3.8:
@@ -62,12 +73,13 @@ def compute_brand_typo_risk(
         bool(features.get("has_port")),
     ]
     obfuscation_score = min(sum(1.0 for flag in obfuscation_flags if flag) / 3.0, 1.0)
-    obfuscation_score = max(obfuscation_score, enrichment.volatility_score)
+    if config.enable_volatility:
+        obfuscation_score = max(obfuscation_score, enrichment.volatility_score)
 
-    typo_score = _typo_score(match)
+    typo_score = _typo_score(match) if config.enable_typo else 0.0
 
-    age_trust = enrichment.age_trust
-    reputation_trust = enrichment.reputation_trust
+    age_trust = enrichment.age_trust if config.enable_age else 0.0
+    reputation_trust = enrichment.reputation_trust if config.enable_reputation else 0.0
 
     value = (
         1.8 * typo_score

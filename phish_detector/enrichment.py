@@ -150,7 +150,13 @@ def _google_safe_browsing(url: str) -> bool | None:
         return None
 
 
-def get_domain_enrichment(host: str, url: str) -> DomainEnrichment:
+def get_domain_enrichment(
+    host: str,
+    url: str,
+    enable_age: bool = True,
+    enable_reputation: bool = True,
+    enable_volatility: bool = True,
+) -> DomainEnrichment:
     if os.getenv("GOJO_DISABLE_ENRICHMENT"):
         return DomainEnrichment(
             registrable_domain=host,
@@ -180,23 +186,25 @@ def get_domain_enrichment(host: str, url: str) -> DomainEnrichment:
         reputation = 0.0
         reasons.append("blocklist")
 
-    gsb_match = _google_safe_browsing(url)
-    if gsb_match is True:
-        reputation = 0.0
-        reasons.append("gsb_match")
-    elif gsb_match is False:
-        reasons.append("gsb_clear")
+    if enable_reputation:
+        gsb_match = _google_safe_browsing(url)
+        if gsb_match is True:
+            reputation = 0.0
+            reasons.append("gsb_match")
+        elif gsb_match is False:
+            reasons.append("gsb_clear")
 
-    rdap_data = _rdap_domain(registrable)
-    registration = _extract_registration_date(rdap_data)
     age_days = None
-    if registration:
-        age_days = (datetime.now(timezone.utc) - registration).days
+    if enable_age:
+        rdap_data = _rdap_domain(registrable)
+        registration = _extract_registration_date(rdap_data)
+        if registration:
+            age_days = (datetime.now(timezone.utc) - registration).days
 
     ips = _resolve_ips(registrable)
     asn = None
     asn_org = None
-    if ips:
+    if ips and enable_reputation:
         ip_data = _rdap_ip(ips[0])
         if ip_data:
             asn = str(ip_data.get("asn")) if ip_data.get("asn") is not None else None
@@ -208,9 +216,12 @@ def get_domain_enrichment(host: str, url: str) -> DomainEnrichment:
                 reputation = 0.1
                 reasons.append("asn_denylist")
 
-    volatility_score, dns_ips = _dns_volatility(registrable)
-    if dns_ips:
-        ips = dns_ips
+    volatility_score = 0.0
+    dns_ips: list[str] = []
+    if enable_volatility:
+        volatility_score, dns_ips = _dns_volatility(registrable)
+        if dns_ips:
+            ips = dns_ips
 
     return DomainEnrichment(
         registrable_domain=registrable,
@@ -222,4 +233,18 @@ def get_domain_enrichment(host: str, url: str) -> DomainEnrichment:
         reputation_reasons=reasons,
         volatility_score=volatility_score,
         ip_addresses=ips,
+    )
+
+
+def default_domain_enrichment(host: str) -> DomainEnrichment:
+    return DomainEnrichment(
+        registrable_domain=host,
+        age_days=None,
+        age_trust=0.5,
+        asn=None,
+        asn_org=None,
+        reputation_trust=0.5,
+        reputation_reasons=["enrichment_disabled"],
+        volatility_score=0.0,
+        ip_addresses=[],
     )

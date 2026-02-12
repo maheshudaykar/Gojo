@@ -35,6 +35,7 @@ class PolicyDecision:
     context: str
     strategy: Literal["thompson", "ucb", "greedy"]
     confidence: float
+    propensity: float
     metadata: dict[str, Any] = field(default_factory=lambda: {})
 
 
@@ -97,12 +98,14 @@ class ThompsonSamplingPolicy:
         strategy: Literal["thompson", "ucb", "greedy"] = "thompson",
         alpha_prior: float = 1.0,
         beta_prior: float = 1.0,
+        propensity_samples: int = 40,
         seed: int | None = None,
     ) -> None:
         self.path = Path(path)
         self.strategy = strategy
         self.alpha_prior = alpha_prior
         self.beta_prior = beta_prior
+        self.propensity_samples = propensity_samples
         self.actions = DEFAULT_ACTIONS
         self.policy = self._load()
         self.metrics = self._load_metrics()
@@ -191,6 +194,21 @@ class ThompsonSamplingPolicy:
         confidence = float(samples[best_action] / (sum(samples.values()) + 1e-10))
         return best_action, confidence
 
+    def _estimate_thompson_propensity(self, context_data: dict[str, Any]) -> dict[float, float]:
+        counts = {float(action): 0 for action in self.actions}
+        for _ in range(max(self.propensity_samples, 1)):
+            sampled: dict[float, float] = {}
+            for action in self.actions:
+                key = str(action)
+                stats = context_data.get(key, {})
+                successes = float(stats.get("alpha", self.alpha_prior))
+                failures = float(stats.get("beta", self.beta_prior))
+                sampled[action] = float(self._rng.beta(successes, failures))
+            best_action = float(max(sampled, key=sampled.get))  # type: ignore[arg-type]
+            counts[best_action] += 1
+        total = sum(counts.values()) or 1
+        return {action: count / total for action, count in counts.items()}
+
     def _ucb1(self, context_data: dict[str, Any], total_plays: int) -> tuple[float, float]:
         """
         UCB1: Upper Confidence Bound algorithm.
@@ -265,10 +283,14 @@ class ThompsonSamplingPolicy:
         # Select action based on strategy
         if strategy_used == "thompson":
             action, confidence = self._thompson_sampling(context_data)
+            propensities = self._estimate_thompson_propensity(context_data)
+            propensity = float(propensities.get(action, 0.0))
         elif strategy_used == "ucb":
             action, confidence = self._ucb1(context_data, total_plays)
+            propensity = 1.0
         else:  # greedy
             action, confidence = self._greedy(context_data)
+            propensity = 1.0
         
         # Update metrics
         self.metrics.context_distribution[context] = \
@@ -281,6 +303,7 @@ class ThompsonSamplingPolicy:
             context=context,
             strategy=cast(Literal["thompson", "ucb", "greedy"], strategy_used),
             confidence=confidence,
+            propensity=propensity,
             metadata={
                 "ml_confidence": ml_confidence,
                 "rule_score": rule_score,

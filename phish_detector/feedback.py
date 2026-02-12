@@ -19,6 +19,8 @@ class FeedbackEntry:
     rule_score: int
     ml_score: float
     final_score: int
+    propensity: float | None
+    policy_strategy: str | None
     status: str
     created_at: str
     resolved_at: str | None = None
@@ -52,11 +54,18 @@ def _coerce_entry(entry: dict[str, Any]) -> FeedbackEntry:
         rule_score=int(entry.get("rule_score", 0)),
         ml_score=float(entry.get("ml_score", 0.0)),
         final_score=int(entry.get("final_score", 0)),
+        propensity=entry.get("propensity"),
+        policy_strategy=entry.get("policy_strategy"),
         status=str(entry.get("status", "pending")),
         created_at=str(entry.get("created_at", "")),
         resolved_at=entry.get("resolved_at"),
         true_label=entry.get("true_label"),
     )
+
+
+def load_entries(path: str) -> list[FeedbackEntry]:
+    storage = Path(path)
+    return [_coerce_entry(item) for item in _load_entries(storage)]
 
 
 def record_pending(entry: FeedbackEntry, path: str) -> None:
@@ -93,6 +102,8 @@ def create_entry(
     rule_score: int,
     ml_score: float,
     final_score: int,
+    propensity: float | None = None,
+    policy_strategy: str | None = None,
 ) -> FeedbackEntry:
     return FeedbackEntry(
         id=str(uuid.uuid4()),
@@ -104,6 +115,8 @@ def create_entry(
         rule_score=rule_score,
         ml_score=ml_score,
         final_score=final_score,
+        propensity=propensity,
+        policy_strategy=policy_strategy,
         status="pending",
         created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
     )

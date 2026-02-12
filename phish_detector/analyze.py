@@ -1,17 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from typing import Any, Protocol
 
-from phish_detector.brand_risk import compute_brand_typo_risk
-from phish_detector.enrichment import get_domain_enrichment
+from phish_detector.brand_risk import BrandRiskConfig, compute_brand_typo_risk
+from phish_detector.enrichment import default_domain_enrichment, get_domain_enrichment
 from phish_detector.feedback import create_entry, record_pending, resolve_feedback
 from phish_detector.parsing import parse_url
 from phish_detector.policy import BanditPolicy, DEFAULT_WEIGHT
+from phish_detector.reward import cost_sensitive_reward
 from phish_detector.report import build_report
 from phish_detector.rules import RuleHit, evaluate_rules
-from phish_detector.scoring import binary_label_for_score, combine_scores, compute_score
+from phish_detector.scoring import ScoreResult, binary_label_for_score, combine_scores, compute_score, label_for_score
 from phish_detector.policy import context_from_scores
 from phish_detector.typosquat import detect_typosquatting
 
@@ -40,6 +41,22 @@ class AnalysisConfig:
     label: str | None = None
     resolve_feedback: str | None = None
     enable_feedback: bool = True
+    enable_enrichment: bool = True
+    enable_brand_risk: bool = True
+    enable_context_enrichment: bool = True
+    score_mode: str = "fusion"
+    static_weight: float = DEFAULT_WEIGHT
+    enable_policy: bool = True
+    brand_risk: BrandRiskConfig = field(default_factory=BrandRiskConfig)
+    enable_cost_sensitive: bool = True
+    fn_cost: float = 3.0
+    fp_cost: float = 1.0
+    enable_guardrails: bool = True
+    min_policy_confidence: float = 0.55
+    max_weight_shift: float = 0.25
+    enable_abstain: bool = True
+    abstain_min_confidence: float = 0.6
+    abstain_min_score: int = 60
 
 
 def load_ml_context(config: AnalysisConfig) -> dict[str, Any] | None:
@@ -76,10 +93,25 @@ def analyze_url(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     parsed = parse_url(url)
     features, hits = evaluate_rules(parsed)
-    enrichment = get_domain_enrichment(parsed.host, parsed.original)
+    if config.enable_enrichment:
+        enrichment = get_domain_enrichment(
+            parsed.host,
+            parsed.original,
+            enable_age=config.brand_risk.enable_age,
+            enable_reputation=config.brand_risk.enable_reputation,
+            enable_volatility=config.brand_risk.enable_volatility,
+        )
+    else:
+        enrichment = default_domain_enrichment(parsed.host)
     typo_match = detect_typosquatting(parsed)
-    brand_risk = compute_brand_typo_risk(parsed, features, typo_match, enrichment)
-    if typo_match:
+    brand_risk = compute_brand_typo_risk(
+        parsed,
+        features,
+        typo_match,
+        enrichment,
+        config.brand_risk,
+    )
+    if config.enable_brand_risk and typo_match:
         if brand_risk.score >= 75 and brand_risk.corroborating:
             hits.append(
                 RuleHit(
@@ -145,33 +177,49 @@ def analyze_url(
         ml_info.update({"available": False, "error": ml_context.get("error")})
 
     policy_info: dict[str, Any] | None = None
-    weight = DEFAULT_WEIGHT
-    if ml_score is not None:
+    weight = config.static_weight
+    if ml_score is not None and config.enable_policy:
         if policy is None:
             policy = BanditPolicy(config.policy_path)
-        context_parts = [
-            "typo1" if typo_match else "typo0",
-            "intent1" if brand_risk.components["I"] >= 0.5 else "intent0",
-        ]
-        age_bucket = "age_unknown"
-        if enrichment.age_days is not None:
-            if enrichment.age_days < 30:
-                age_bucket = "age_new"
-            elif enrichment.age_days < 365:
-                age_bucket = "age_mid"
-            else:
-                age_bucket = "age_old"
-        rep_bucket = "rep_low" if enrichment.reputation_trust < 0.35 else "rep_high" if enrichment.reputation_trust > 0.7 else "rep_mid"
-        context_parts.extend([age_bucket, rep_bucket])
-        context_override = f"{context_from_scores(ml_confidence, rule_score.score)}|" + "|".join(context_parts)
+        context_override = None
+        if config.enable_context_enrichment:
+            context_parts = [
+                "typo1" if typo_match else "typo0",
+                "intent1" if brand_risk.components["I"] >= 0.5 else "intent0",
+            ]
+            age_bucket = "age_unknown"
+            if enrichment.age_days is not None:
+                if enrichment.age_days < 30:
+                    age_bucket = "age_new"
+                elif enrichment.age_days < 365:
+                    age_bucket = "age_mid"
+                else:
+                    age_bucket = "age_old"
+            rep_bucket = "rep_low" if enrichment.reputation_trust < 0.35 else "rep_high" if enrichment.reputation_trust > 0.7 else "rep_mid"
+            context_parts.extend([age_bucket, rep_bucket])
+            context_override = f"{context_from_scores(ml_confidence, rule_score.score)}|" + "|".join(context_parts)
         decision = policy.select_action(
             ml_confidence,
             rule_score.score,
             context_override=context_override,
         )  # type: ignore[union-attr]
         weight = DEFAULT_WEIGHT if config.shadow_learn else decision.action
+        guardrails: list[str] = []
+        weight_raw = weight
+        if config.enable_guardrails:
+            if ml_confidence < config.min_policy_confidence:
+                weight = DEFAULT_WEIGHT
+                guardrails.append("min_confidence")
+            else:
+                min_weight = max(0.0, DEFAULT_WEIGHT - config.max_weight_shift)
+                max_weight = min(1.0, DEFAULT_WEIGHT + config.max_weight_shift)
+                if weight < min_weight or weight > max_weight:
+                    weight = min(max(weight, min_weight), max_weight)
+                    guardrails.append("max_shift")
+
         policy_info = {
             "weight": weight,
+            "weight_raw": weight_raw,
             "context": decision.context,
             "shadow": config.shadow_learn,
         }
@@ -182,13 +230,25 @@ def analyze_url(
             policy_info["confidence"] = decision.confidence
         if hasattr(decision, "epsilon"):
             policy_info["epsilon"] = decision.epsilon
+        if hasattr(decision, "propensity"):
+            policy_info["propensity"] = decision.propensity
+        if hasattr(decision, "source"):
+            policy_info["source"] = decision.source
+        if guardrails:
+            policy_info["guardrails"] = guardrails
 
-    if ml_score is None:
+    if config.score_mode == "rules_only" or ml_score is None:
         final_score = rule_score
+    elif config.score_mode == "ml_only":
+        final_score = ScoreResult(score=ml_score, label=label_for_score(ml_score), hits=hits)
     else:
         final_score = combine_scores(rule_score.score, ml_score, weight, hits)
 
     predicted_label = binary_label_for_score(final_score.score)
+    review_flag = False
+    if config.enable_abstain and ml_score is not None:
+        if ml_confidence < config.abstain_min_confidence and final_score.score >= config.abstain_min_score:
+            review_flag = True
     feedback_info: dict[str, Any] | None = None
 
     if config.enable_feedback:
@@ -197,7 +257,16 @@ def analyze_url(
             if resolved is None:
                 feedback_info = {"status": "missing", "id": config.resolve_feedback}
             elif ml_score is not None and resolved.confidence >= 0.55:
-                reward = resolved.confidence if resolved.predicted_label == config.label else -resolved.confidence
+                if config.enable_cost_sensitive:
+                    reward = cost_sensitive_reward(
+                        resolved.predicted_label,
+                        config.label,
+                        resolved.confidence,
+                        config.fn_cost,
+                        config.fp_cost,
+                    )
+                else:
+                    reward = resolved.confidence if resolved.predicted_label == config.label else -resolved.confidence
                 (policy or BanditPolicy(config.policy_path)).update(resolved.context, resolved.action, reward)
                 feedback_info = {"status": "resolved", "id": resolved.id, "updated": True}
             else:
@@ -212,12 +281,23 @@ def analyze_url(
                 rule_score=rule_score.score,
                 ml_score=float(ml_score or 0.0),
                 final_score=final_score.score,
+                propensity=policy_info.get("propensity") if policy_info else None,
+                policy_strategy=policy_info.get("strategy") if policy_info else None,
             )
             if config.label and ml_score is not None:
                 entry.status = "resolved"
                 entry.true_label = config.label
                 if ml_confidence >= 0.55:
-                    reward = ml_confidence if predicted_label == config.label else -ml_confidence
+                    if config.enable_cost_sensitive:
+                        reward = cost_sensitive_reward(
+                            predicted_label,
+                            config.label,
+                            ml_confidence,
+                            config.fn_cost,
+                            config.fp_cost,
+                        )
+                    else:
+                        reward = ml_confidence if predicted_label == config.label else -ml_confidence
                     (policy or BanditPolicy(config.policy_path)).update(entry.context, entry.action, reward)
                     feedback_info = {"status": "resolved", "id": entry.id, "updated": True}
                 else:
@@ -256,11 +336,16 @@ def analyze_url(
             },
         },
     )
+    report["summary"]["decision"] = "review" if review_flag else "block" if predicted_label == "phish" else "allow"
+    report["summary"]["review"] = review_flag
     extra: dict[str, Any] = {
         "rule_score": rule_score.score,
         "ml_score": ml_score,
         "ml_confidence": ml_confidence,
         "policy_weight": weight if policy_info else None,
+        "policy_weight_raw": policy_info.get("weight_raw") if policy_info else None,
+        "decision": report["summary"]["decision"],
+        "review": review_flag,
         "brand_typo_risk": brand_risk.score,
         "brand_typo_components": brand_risk.components,
         "domain_enrichment": {

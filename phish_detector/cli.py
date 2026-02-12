@@ -48,6 +48,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--explain", action="store_true", help="Show full scoring breakdown")
     parser.add_argument("--shadow-learn", action="store_true", help="Update policy without affecting output")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
+    parser.add_argument("--fn-cost", type=float, default=3.0, help="Cost multiplier for false negatives")
+    parser.add_argument("--fp-cost", type=float, default=1.0, help="Cost multiplier for false positives")
+    parser.add_argument("--min-policy-confidence", type=float, default=0.55, help="Minimum confidence to use policy")
+    parser.add_argument("--max-weight-shift", type=float, default=0.25, help="Max policy weight delta from default")
+    parser.add_argument("--abstain-min-confidence", type=float, default=0.6, help="Min confidence before review")
+    parser.add_argument("--abstain-min-score", type=int, default=60, help="Min score before review")
     return parser
 
 
@@ -62,6 +68,12 @@ def _build_config(args: argparse.Namespace, enable_feedback: bool) -> AnalysisCo
         label=args.label,
         resolve_feedback=args.resolve_feedback,
         enable_feedback=enable_feedback,
+        fn_cost=args.fn_cost,
+        fp_cost=args.fp_cost,
+        min_policy_confidence=args.min_policy_confidence,
+        max_weight_shift=args.max_weight_shift,
+        abstain_min_confidence=args.abstain_min_confidence,
+        abstain_min_score=args.abstain_min_score,
     )
 
 
