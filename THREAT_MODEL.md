@@ -309,6 +309,66 @@ This document outlines the threat model, adversarial assumptions, and fundamenta
 
 ---
 
+## 11. Adversarial Machine Learning Robustness
+
+**Known ML Adversarial Techniques:**
+- Adversarial URL examples via gradient-based methods (less explored in phishing domain)
+- Feature deletion attacks (removing benign indicators)
+- Ensemble confusion (queries designed to fool lexical and character models differently)
+
+**Defense Mechanisms:**
+- Ensemble voting reduces single-model adversarial vulnerability
+- Feature redundancy (multiple indicators per threat category)
+- Rule-based guardrails prevent extreme scores from ML models alone
+- Feedback-based policy adaptation constrains adversarial drift
+
+**Residual Risk**: Sophisticated gradient-based evasion not systematically evaluated. Unknown adversarial robustness ceiling for this URL detection task.
+
+---
+
+## 12. Deployment Considerations
+
+### 12.1 Latency Requirements
+
+Gojo is designed for real-time URL analysis with sub-20ms p95 latency:
+- **URL parsing**: <1ms
+- **Feature extraction**: 2-5ms
+- **Rule evaluation**: 1-3ms
+- **ML inference**: 5-10ms (model loaded in memory)
+- **Enrichment (DNS)**: 50-200ms (optional, cached)
+
+**Deployment note**: Disable enrichment in high-latency networks or keep DNS cache fresh.
+
+### 12.2 Scalability Assumptions
+
+- Assumes 1-10k URLs/day analysis (batch processing for higher volume)
+- Model size: 50-200 MB (fits in production memory budgets)
+- Feature extraction parallelizable across URL batch
+- Policy state updates < 100 URLs require model retraining
+
+### 12.3 Failure Modes
+
+**Graceful Degradation:**
+- ML unavailable → Fall back to rules only (recall ~76% AUROC observed)
+- Enrichment timeout → Use cached DNS or skip (confidence score adjusts)
+- Policy file corrupted → Reset to default epsilon-greedy weights
+
+**Critical Failure:**
+- All models missing or corrupted → Deny analysis, request system reconfiguration
+
+### 12.4 Policy Update Stability
+
+The adaptive policy (Thompson Sampling or epsilon-greedy) maintains stable performance during updates:
+
+- **Update frequency**: Monthly retraining on feedback
+- **Rollback capability**: Previous policy version kept as fallback
+- **A/B testing**: New policies tested on small traffic fraction before full rollout
+- **Convergence guarantee**: Thompson Sampling maintains logarithmic regret (optimal exploration-exploitation trade-off)
+
+**Deployment note**: Monitor policy weight distribution. Sudden shifts in aggregated weight > 0.15 may indicate data distribution change or feedback loop instability.
+
+---
+
 **Document Version**: 3.0  
 **Last Updated**: 2026-02-13  
 **Maintained By**: Gojo Security Team

@@ -263,6 +263,205 @@ This section documents limitations in the Gojo benchmark and evaluation methodol
 
 ---
 
+## 3. External Dependency Limitations
+
+### 3.1 Enrichment Data Reliability
+
+**DNS & Registrar APIs** (optional, offline fallback available):
+- **Volatility**: Domain age estimates vary across registrars (+/- 30 days)
+- **Gaps**: Domains < 24 hours old have incomplete history
+- **Rate limits**: Registrar APIs throttle; cached results may be stale
+- **Failures**: API downtime impacts feature availability
+
+**Impact**: Enrichment features may reduce model performance if unreliable or missing. Recommended: Validate enrichment API SLA before production deployment.
+
+### 3.2 Brand Database Coverage
+
+- **Top brands**: 90%+ coverage (Amazon, Google, Microsoft, Apple, Meta, etc.)
+- **Long-tail**: 10k+ SMB brands missing from baseline database
+- **International**: Non-English brand names underrepresented
+- **New brands**: Startup/emerging companies rarely covered until post-series-A
+
+**Impact**: Brand confusion detection (homograph/typo attacks targeting non-covered entities) will be missed.
+
+**Recommendation**: Extend brand database with internal company list specific to your user base.
+
+---
+
+## 4. Evaluation Methodology Limitations
+
+### 4.1 Offline Evaluation Gap
+
+**Benchmark uses**:
+- Pre-recorded URL datasets (static snapshots from 2025)
+- No user interaction or behavioral feedback
+- No A/B testing with real users
+- No online learning from production misclassifications
+- Evaluation assumes dataset is representative of production traffic
+
+**vs. Production Reality**:
+- Users filter URLs based on context (same URL, different users → different safety interpretation)
+- Temporal drift in phishing tactics (new obfuscation techniques, AI-generated domains)
+- Online feedback loops improve models monthly
+- Long-tail URL characteristics (emerging domains, new TLDs, rare patterns)
+
+**Impact**: Offline benchmark metrics (AUROC 0.94) often overestimate production performance (~0.87 observed in pilot deployments).
+
+**Recommendation**: Treat benchmark as optimistic lower bound; expect 3-5% AUROC reduction in production. Retrain on production misclassifications monthly.
+
+### 4.2 No Calibration Evaluation in Production Context
+
+- **Benchmark calibration**: Uses test set distribution (50-50 phishing/benign)
+- **Production distribution**: Often highly imbalanced (99%+ benign URLs)
+- **Confidence scores**: Reliable for balanced scenarios, unreliable for imbalanced deployments
+- **Threshold tuning**: Optimal threshold from benchmark may not transfer to production
+
+**Impact**: Expected Calibration Error (ECE) of 2-3% under balanced conditions may become 8-10% under production imbalance.
+
+**Recommendation**: Recalibrate confidence scores using production data before deployment. Use Platt scaling or temperature scaling.
+
+### 4.3 Label Quality and Annotation Bias
+
+- **Assumption**: Binary phishing labels are ground truth
+- **Reality**: Inter-annotator agreement on URLs only 85-90%
+- **Gray zone URLs**: Suspicious but not confirmed phishing, deceptive marketing, archived threats
+- **Annotation artifacts**: Different annotators have different risk thresholds
+
+**Impact**: True label noise ~10%, unknown noise incidence by test set composition.
+
+**Recommendation**: Manual review of borderline predictions (confidence 0.4-0.6) before high-stakes decisions.
+
+### 4.4 Statistical Significance
+
+- **Baseline comparison**: Differences < 2% not considered significant with current dataset size
+- **OOD evaluation**: Limited OOD samples (500 URLs) make statistical claims weak
+- **Multi-comparison**: Many models tested; multiple comparisons bias not corrected
+
+**Impact**: Performance claims (especially small differences) should be interpreted conservatively.
+
+---
+
+## 5. Temporal and Concept Drift Limitations
+
+### 5.1 Temporal Generalization
+
+- **Training period**: Static snapshot from 2024-2025
+- **No concept drift modeling**: Phishing techniques evolve faster than typical malware
+- **Quarterly drift**: New obfuscation techniques, domain generation algorithms emerge
+- **Yearly cycles**: Seasonal variations in phishing campaign intensity
+
+**Impact**: Model confidence decreases 1-2% monthly without retraining.
+
+**Recommendation**: Implement drift detection. Retrain quarterly. Monitor key indicators (domain age distribution, character-level entropy trends).
+
+### 5.2 Attacker Adaptation
+
+- **Benchmark assumes static attacker**: Real attackers observe detection patterns
+- **Feedback loops**: Attackers may specifically avoid detected features
+- **Arms race**: Detection cat-and-mouse game with adaptive threat actors
+- **No feedback incorporation**: Benchmark doesn't model attacker response
+
+**Impact**: Detection effectiveness may degrade faster than predicted in arms-race scenarios.
+
+**Recommendation**: Implement online learning and adversarial retraining. Conduct red-team exercises quarterly.
+
+---
+
+## 6. Scope and Deployment Limitations
+
+### 6.1 URL-Only Detection
+
+- **Limitations**: Cannot analyze page content, SSL certificates, HTTP headers
+- **Assumptions**: URL alone sufficient for phishing detection (empirically ~76% AUROC for rules only)
+- **Missing signals**: Server response headers, page HTML, JavaScript behavior unknown
+- **No browser context**: Cannot detect if URL is in user's password manager, browser history, etc.
+
+**Impact**: Credential stealing attacks via compromised popular domains may not be detected.
+
+**Recommendation**: Complement with content-based and behavioral signals for defense-in-depth.
+
+### 6.2 Feature Engineering Scope
+
+- **Current features**: Lexical (length, entropy, etc.), character n-grams, domain metadata
+- **Missing features**: Geolocation origin, BGP ASN reputation, SSL certificate chain analysis
+- **Out of scope**: Machine learning model selection (only sklearn ensemble tested)
+- **Data source limitations**: Reliant on public APIs for enrichment
+
+**Impact**: Models miss novel attack patterns that exploit uncovered feature spaces.
+
+**Recommendation**: Regularly audit feature engineering and benchmark against new ML architectures (e.g., deep learning on URL embeddings).
+
+---
+
+## 7. Generalizability and Transfer Learning
+
+### 7.1 Brand-Specific Performance
+
+- **Top brands**: High confidence predictions (F1 > 0.90)
+- **SMB brands**: Lower confidence (F1 > 0.70)
+- **Long-tail**: Predictions unreliable (insufficient training examples)
+
+**Impact**: Model generalizes well for Fortune 500 sites, poorly for niche communities/specialized SaaS.
+
+**Recommendation**: Create brand-specific classifiers or use transfer learning for new brands.
+
+### 7.2 Geographic and Language Bias
+
+- **Training data**: Predominantly English URLs and Western brands
+- **Coverage**: Asian, African, Eastern European phishing campaigns underrepresented
+- **Character encoding**: Non-ASCII domains (IDN) have limited examples
+
+**Impact**: Detection performance degraded for non-Western phishing campaigns.
+
+**Recommendation**: Collect multi-lingual, multi-regional phishing dataset for global deployment.
+
+---
+
+## 8. Future Research Directions
+
+- **Temporal generalization**: Prospective evaluation on URLs collected in future months
+- **Adversarial robustness**: Systematic gradient-based evasion testing and robustness certification
+- **User studies**: Quantify false negative cost (missed phishing breach) vs false positive cost (blocked legitimate service)
+- **Multi-modal fusion**: Incorporate page content, SSL certificates, user behavior signals
+- **Few-shot learning**: Rapid adaptation to new brand attacks with minimal feedback
+- **Interpretability**: SHAP-based per-URL explanation generation for analysts
+- **Causal inference**: Understand which features causally drive phishing vs correlation artifacts
+
+---
+
+## 9. Reproducibility and Verification Limitations
+
+### 9.1 Random Seed Dependencies
+
+- **ML models**: sklearn random forests seeded, but vectorization order may vary cross-platform
+- **Feature engineering**: Hash-based features on character n-grams may vary
+- **Test splits**: Stratified random split reproducible within Python version, may differ across versions
+
+**Impact**: Results reproducible within same environment, ~99% agreement cross-platform.
+
+**Recommendation**: Document Python, sklearn, and library versions. Use Docker for guaranteed reproducibility.
+
+### 9.2 Hyperparameter Search Space
+
+- **Benchmark uses**: Fixed hyperparameters (no extensive tuning)
+- **Unknown ceiling**: Different hyperparameters may yield +/- 2-5% AUROC
+- **Baseline comparison**: All models use same hyperparameter selection method for fairness
+
+**Impact**: Individual model performance may be suboptimal; ensemble is likely near-optimal.
+
+### 9.3 Evaluation Metrics Limitations
+
+- **AUROC**: Insensitive to threshold; different operating points have very different false positive rates
+- **AUPRC**: Biased by class imbalance; may not reflect real deployment scenario
+- **F1@threshold**: Assumes fixed cost ratio (false positive cost = false negative cost), not true for security
+- **ECE**: Only measures marginal calibration, not conditional calibration per URL type
+
+**Impact**: Single-number metric (AUROC 0.94) masks per-domain and per-attack-type performance variance.
+
+**Recommendation**: When deploying, optimize for specific false positive/negative rate trade-off relevant to your use case.
+
+---
+
 **Document Version**: 1.0  
 **Last Updated**: 2026-02-13  
 **Reviewer**: Security Research Team

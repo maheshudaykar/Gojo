@@ -10,6 +10,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# Add project root to sys.path to enable module imports
+project_root = Path(__file__).resolve().parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 
 def check_files_exist() -> bool:
     """Verify all new files exist."""
