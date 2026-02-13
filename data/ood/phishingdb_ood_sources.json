@@ -1,0 +1,6 @@
+{
+  "phishingdb_count": 5000,
+  "tranco_count": 1000000,
+  "phish_used": 5000,
+  "benign_used": 5000
+}

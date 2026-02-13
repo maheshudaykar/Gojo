@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import random
 from dataclasses import dataclass
@@ -156,6 +157,14 @@ def _write_rows(path: Path, rows: list[dict[str, Any]]) -> None:
         writer.writerows(rows)
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Gojo data prep and quality tooling")
     parser.add_argument("--input", required=True, help="Input CSV path")
@@ -176,9 +185,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     output_dir = Path(args.output_dir)
-    rows = load_rows(Path(args.input), args.url_col, args.label_col)
+    input_path = Path(args.input)
+    rows = load_rows(input_path, args.url_col, args.label_col)
 
     conflicts = 0
+    original_count = len(rows)
     if args.dedup:
         rows, conflicts = dedup_rows(rows)
 
@@ -229,12 +240,29 @@ def main(argv: list[str] | None = None) -> int:
     _write_rows(output_dir / "label_review.csv", review_rows)
 
     split_report: dict[str, Any] = {
-        "rows": len(rows),
+        "dataset": {
+            "path": str(input_path),
+            "sha256": _sha256_file(input_path),
+            "rows_original": original_count,
+            "rows_after": len(rows),
+        },
         "conflicts": conflicts,
         "hard_negatives": len(hard_negatives),
         "quality_review": len(review_rows),
-        "split_mode": args.split_mode,
-        "test_ratio": args.test_ratio,
+        "split_recipe": {
+            "mode": args.split_mode,
+            "seed": args.seed,
+            "test_ratio": args.test_ratio,
+            "dedup": args.dedup,
+            "url_col": args.url_col,
+            "label_col": args.label_col,
+        },
+        "preprocessing": {
+            "normalize_labels": True,
+            "family_split": args.split_mode == "family",
+            "enable_enrichment": args.enable_enrichment,
+            "ml_mode": args.ml_mode,
+        },
     }
 
     if args.split_mode == "family":

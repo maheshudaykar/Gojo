@@ -58,6 +58,19 @@ class AnalysisConfig:
     abstain_min_score: int = 60
 
 
+@dataclass(frozen=True)
+class EnrichmentFallback:
+    registrable_domain: str
+    age_days: int | None
+    age_trust: float
+    asn: str | None
+    asn_org: str | None
+    reputation_trust: float
+    reputation_reasons: list[str]
+    volatility_score: float
+    ip_addresses: list[str]
+
+
 def load_ml_context(config: AnalysisConfig) -> dict[str, Any] | None:
     if config.ml_mode == "none":
         return None
@@ -110,17 +123,17 @@ def analyze_url(
     elif default_domain_enrichment is not None:
         enrichment = default_domain_enrichment(parsed.host)
     else:
-        enrichment = type("DomainEnrichment", (), {
-            "registrable_domain": parsed.host,
-            "age_days": None,
-            "age_trust": 0.5,
-            "asn": None,
-            "asn_org": None,
-            "reputation_trust": 0.5,
-            "reputation_reasons": ["enrichment_unavailable"],
-            "volatility_score": 0.0,
-            "ip_addresses": [],
-        })()
+        enrichment = EnrichmentFallback(
+            registrable_domain=parsed.host,
+            age_days=None,
+            age_trust=0.5,
+            asn=None,
+            asn_org=None,
+            reputation_trust=0.5,
+            reputation_reasons=["enrichment_unavailable"],
+            volatility_score=0.0,
+            ip_addresses=[],
+        )
     typo_match = detect_typosquatting(parsed)
     brand_risk = compute_brand_typo_risk(
         parsed,

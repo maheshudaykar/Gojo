@@ -41,15 +41,14 @@ def _reward(entry: FeedbackEntry, fn_cost: float, fp_cost: float) -> float:
     )
 
 
-def evaluate_offpolicy(
-    feedback_path: str,
+def evaluate_offpolicy_entries(
+    entries: list[FeedbackEntry],
     policy: Any,
     fn_cost: float,
     fp_cost: float,
     min_policy_confidence: float,
     max_weight_shift: float,
 ) -> OffPolicyResult:
-    entries = _coerce_entries(Path(feedback_path))
     if not entries:
         return OffPolicyResult(ips=0.0, snips=0.0, dr=0.0, count=0, skipped=0, guardrail_violations=0)
 
@@ -120,4 +119,23 @@ def evaluate_offpolicy(
         count=len(rewards),
         skipped=skipped,
         guardrail_violations=guardrail_violations,
+    )
+
+
+def evaluate_offpolicy(
+    feedback_path: str,
+    policy: Any,
+    fn_cost: float,
+    fp_cost: float,
+    min_policy_confidence: float,
+    max_weight_shift: float,
+) -> OffPolicyResult:
+    entries = _coerce_entries(Path(feedback_path))
+    return evaluate_offpolicy_entries(
+        entries,
+        policy,
+        fn_cost,
+        fp_cost,
+        min_policy_confidence,
+        max_weight_shift,
     )

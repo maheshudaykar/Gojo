@@ -107,7 +107,13 @@ def _dns_volatility(domain: str) -> tuple[float, list[str]]:
         resolver.lifetime = DEFAULT_TIMEOUT
         try:
             answers = resolver.resolve(domain, "A")
-        except Exception:
+        except (
+            dns.resolver.NXDOMAIN,
+            dns.resolver.NoAnswer,
+            dns.resolver.NoNameservers,
+            dns.exception.Timeout,
+            dns.exception.DNSException,
+        ):
             continue
         for answer in answers:
             unique_ips.add(str(answer))

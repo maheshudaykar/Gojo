@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import math
 import random
@@ -15,7 +16,14 @@ import numpy as np
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import average_precision_score, brier_score_loss, f1_score, roc_auc_score
+from sklearn.metrics import (
+    average_precision_score,
+    brier_score_loss,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
 from sklearn.model_selection import train_test_split as _train_test_split  # type: ignore[import-untyped]
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -25,7 +33,8 @@ from phish_detector.adversarial import generate_perturbations
 from phish_detector.analyze import AnalysisConfig, analyze_url
 from phish_detector.brand_risk import BrandRiskConfig
 from phish_detector.features import extract_features, load_suspicious_tlds, vectorize_features
-from phish_detector.offpolicy import evaluate_offpolicy
+from phish_detector.feedback import FeedbackEntry, load_entries
+from phish_detector.offpolicy import OffPolicyResult, evaluate_offpolicy, evaluate_offpolicy_entries
 from phish_detector.parsing import parse_url
 from phish_detector.policy import BanditPolicy
 from phish_detector.policy_v2 import ThompsonSamplingPolicy
@@ -34,6 +43,14 @@ from phish_detector.typosquat import detect_typosquatting
 
 TrainTestSplit = Any
 train_test_split: TrainTestSplit = cast(Any, _train_test_split)
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 @dataclass(frozen=True)
@@ -424,12 +441,93 @@ def evaluate_baseline_scores(
     return y_scores, y_pred
 
 
+def select_ml_context(baseline: str, ml_contexts: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
+    if baseline == "rules-only":
+        return None
+    if baseline == "lexical-only":
+        return ml_contexts["lexical"]
+    if baseline == "char-only":
+        return ml_contexts["char"]
+    return ml_contexts["ensemble"]
+
+
 def _metric_auroc(y_true: list[int], scores: list[float]) -> float:
     return float(roc_auc_score(y_true, scores)) if len(set(y_true)) > 1 else 0.0
 
 
+def _metric_auprc(y_true: list[int], scores: list[float]) -> float:
+    return float(average_precision_score(y_true, scores)) if len(set(y_true)) > 1 else 0.0
+
+
 def _metric_f1(y_true: list[int], preds: list[int]) -> float:
     return float(f1_score(y_true, preds, zero_division=0))
+
+
+def evaluate_error_buckets(
+    urls: list[str],
+    labels: list[int],
+    baseline: str,
+    ml_context: dict[str, Any] | None,
+    seed: int,
+    enable_enrichment: bool = True,
+    enable_context_enrichment: bool = True,
+) -> dict[str, Any]:
+    config, policy = build_config(
+        baseline,
+        enable_enrichment=enable_enrichment,
+        enable_context_enrichment=enable_context_enrichment,
+    )
+    if isinstance(policy, ThompsonSamplingPolicy):
+        policy = ThompsonSamplingPolicy("models/policy.json", seed=seed)
+
+    false_positive: dict[str, int] = {}
+    false_negative: dict[str, int] = {}
+    counts: dict[str, int] = {"fp": 0, "fn": 0, "total": len(labels)}
+    buckets: dict[str, Any] = {
+        "false_positive": false_positive,
+        "false_negative": false_negative,
+        "counts": counts,
+    }
+
+    for url, label in zip(urls, labels):
+        report, extra = analyze_url(url, config, ml_context=ml_context, policy=policy)
+        predicted = binary_label_for_score(int(report["summary"]["score"]))
+        true_label = "phish" if label == 1 else "legit"
+
+        if predicted == true_label:
+            continue
+
+        signals = {hit.get("name") for hit in extra.get("signals", [])}
+        brand_risk = float(extra.get("brand_typo_risk", 0.0))
+        age_days = extra.get("domain_enrichment", {}).get("age_days")
+
+        brand_typo = "typosquat" in signals or brand_risk >= 45
+        benign_lookalike = "typosquat" in signals or brand_risk >= 30
+        obfuscation = bool(
+            signals.intersection({"encoded_chars", "at_symbol", "ip_host", "uncommon_port", "shortener"})
+        )
+        new_domain = age_days is not None and age_days <= 30
+
+        if true_label == "legit":
+            counts["fp"] += 1
+            _bucket = false_positive
+            if benign_lookalike:
+                _bucket["benign_lookalike"] = _bucket.get("benign_lookalike", 0) + 1
+            if obfuscation:
+                _bucket["obfuscation"] = _bucket.get("obfuscation", 0) + 1
+            if brand_typo:
+                _bucket["brand_typo"] = _bucket.get("brand_typo", 0) + 1
+        else:
+            counts["fn"] += 1
+            _bucket = false_negative
+            if brand_typo:
+                _bucket["brand_typo"] = _bucket.get("brand_typo", 0) + 1
+            if obfuscation:
+                _bucket["obfuscation"] = _bucket.get("obfuscation", 0) + 1
+            if new_domain:
+                _bucket["new_domain_abuse"] = _bucket.get("new_domain_abuse", 0) + 1
+
+    return buckets
 
 
 def bootstrap_diff(
@@ -678,7 +776,198 @@ def evaluate_reliability(
         "ece": float(expected_calibration_error(labels, scores)),
         "mce": float(max_calibration_error(labels, scores)),
         "bins": reliability_bins(labels, scores),
+        "abstain": {
+            "min_confidence": config.abstain_min_confidence,
+            "min_score": config.abstain_min_score,
+        },
     }
+
+
+def evaluate_review_impact(
+    urls: list[str],
+    labels: list[int],
+    baseline: str,
+    ml_context: dict[str, Any] | None,
+    seed: int,
+    enable_enrichment: bool = True,
+    enable_context_enrichment: bool = True,
+) -> dict[str, Any]:
+    config, policy = build_config(
+        baseline,
+        enable_enrichment=enable_enrichment,
+        enable_context_enrichment=enable_context_enrichment,
+    )
+    if isinstance(policy, ThompsonSamplingPolicy):
+        policy = ThompsonSamplingPolicy("models/policy.json", seed=seed)
+
+    auto_labels: list[int] = []
+    auto_preds: list[int] = []
+    review_count = 0
+
+    for url, label in zip(urls, labels):
+        report, _extra = analyze_url(url, config, ml_context=ml_context, policy=policy)
+        if report["summary"].get("review"):
+            review_count += 1
+            continue
+        predicted = 1 if binary_label_for_score(int(report["summary"]["score"])) == "phish" else 0
+        auto_labels.append(label)
+        auto_preds.append(predicted)
+
+    coverage = len(auto_labels) / max(len(labels), 1)
+    precision = float(precision_score(auto_labels, auto_preds, zero_division=0)) if auto_labels else 0.0
+    recall = float(recall_score(auto_labels, auto_preds, zero_division=0)) if auto_labels else 0.0
+    f1 = float(f1_score(auto_labels, auto_preds, zero_division=0)) if auto_labels else 0.0
+
+    return {
+        "auto_precision": precision,
+        "auto_recall": recall,
+        "auto_f1": f1,
+        "auto_coverage": coverage,
+        "review_rate": review_count / max(len(labels), 1),
+        "review_count": review_count,
+        "total": len(labels),
+        "abstain": {
+            "min_confidence": config.abstain_min_confidence,
+            "min_score": config.abstain_min_score,
+        },
+    }
+
+
+def _resolved_entries(path: Path) -> list[FeedbackEntry]:
+    entries: list[FeedbackEntry] = []
+    for entry in load_entries(str(path)):
+        if entry.status == "resolved" and entry.true_label:
+            entries.append(entry)
+    return entries
+
+
+def _poison_entries(entries: list[FeedbackEntry], rate: float, rng: random.Random) -> list[FeedbackEntry]:
+    if rate <= 0:
+        return entries
+    poisoned: list[FeedbackEntry] = []
+    for entry in entries:
+        if rng.random() < rate:
+            flipped = "phish" if entry.true_label == "legit" else "legit"
+            poisoned.append(
+                FeedbackEntry(
+                    id=entry.id,
+                    url=entry.url,
+                    predicted_label=entry.predicted_label,
+                    confidence=entry.confidence,
+                    context=entry.context,
+                    action=entry.action,
+                    rule_score=entry.rule_score,
+                    ml_score=entry.ml_score,
+                    final_score=entry.final_score,
+                    propensity=entry.propensity,
+                    policy_strategy=entry.policy_strategy,
+                    status=entry.status,
+                    created_at=entry.created_at,
+                    resolved_at=entry.resolved_at,
+                    true_label=flipped,
+                )
+            )
+        else:
+            poisoned.append(entry)
+    return poisoned
+
+
+def evaluate_policy_stability(
+    feedback_path: str,
+    policy: Any,
+    seeds: list[int],
+    sparse_rates: list[float],
+    poison_rate: float,
+    fn_cost: float,
+    fp_cost: float,
+    min_policy_confidence: float,
+    max_weight_shift: float,
+) -> dict[str, Any]:
+    entries = _resolved_entries(Path(feedback_path))
+    if not entries:
+        return {}
+
+    summary: dict[str, Any] = {}
+    for rate in sparse_rates:
+        runs: list[OffPolicyResult] = []
+        for seed in seeds:
+            rng = random.Random(seed)
+            if rate >= 1.0:
+                sampled = list(entries)
+            else:
+                sampled = [entry for entry in entries if rng.random() <= rate]
+            sampled = _poison_entries(sampled, poison_rate, rng)
+            runs.append(
+                evaluate_offpolicy_entries(
+                    sampled,
+                    policy,
+                    fn_cost,
+                    fp_cost,
+                    min_policy_confidence,
+                    max_weight_shift,
+                )
+            )
+
+        if not runs:
+            continue
+        guardrail_rates = [run.guardrail_violations / max(run.count, 1) for run in runs]
+        summary[f"rate_{rate:.2f}"] = {
+            "ips": statistics.mean([run.ips for run in runs]),
+            "snips": statistics.mean([run.snips for run in runs]),
+            "dr": statistics.mean([run.dr for run in runs]),
+            "guardrail_violation_rate": statistics.mean(guardrail_rates),
+            "count": statistics.mean([run.count for run in runs]),
+            "poison_rate": poison_rate,
+        }
+
+    return summary
+
+
+def evaluate_calibration_drift(
+    rows: list[dict[str, Any]],
+    baseline: str,
+    ml_context: dict[str, Any] | None,
+    seed: int,
+    buckets: int = 4,
+) -> dict[str, Any]:
+    timed = [row for row in rows if row.get("time") is not None]
+    if len(timed) < buckets:
+        return {}
+    timed.sort(key=lambda row: row["time"])
+
+    config, policy = build_config(baseline)
+    if isinstance(policy, ThompsonSamplingPolicy):
+        policy = ThompsonSamplingPolicy("models/policy.json", seed=seed)
+
+    bucket_size = max(1, len(timed) // buckets)
+    results: list[dict[str, Any]] = []
+    for idx in range(buckets):
+        start = idx * bucket_size
+        end = len(timed) if idx == buckets - 1 else (idx + 1) * bucket_size
+        bucket_rows = timed[start:end]
+        labels = [row["label"] for row in bucket_rows]
+        scores: list[float] = []
+        review_count = 0
+        for row in bucket_rows:
+            report, _extra = analyze_url(row["url"], config, ml_context=ml_context, policy=policy)
+            scores.append(report["summary"]["score"] / 100.0)
+            if report["summary"].get("review"):
+                review_count += 1
+        results.append(
+            {
+                "start_time": bucket_rows[0]["time"],
+                "end_time": bucket_rows[-1]["time"],
+                "count": len(bucket_rows),
+                "ece": float(expected_calibration_error(labels, scores)),
+                "mce": float(max_calibration_error(labels, scores)),
+                "review_rate": review_count / max(len(bucket_rows), 1),
+                "abstain": {
+                    "min_confidence": config.abstain_min_confidence,
+                    "min_score": config.abstain_min_score,
+                },
+            }
+        )
+    return {"buckets": results}
 
 
 def evaluate_adversarial_suite(
@@ -743,15 +1032,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, default=42, help="Base seed")
     parser.add_argument("--output-dir", default="results", help="Output directory")
     parser.add_argument("--plots", action="store_true", help="Generate plots")
+    parser.add_argument("--max-rows", type=int, default=0, help="Limit dataset rows for faster runs")
     parser.add_argument("--feedback-store", default="models/feedback.json", help="Feedback log path")
     parser.add_argument("--skip-calibration-compare", action="store_true", help="Skip calibration method compare")
     parser.add_argument("--skip-adversarial", action="store_true", help="Skip adversarial suite")
     parser.add_argument("--skip-offpolicy", action="store_true", help="Skip off-policy evaluation")
     parser.add_argument("--skip-significance", action="store_true", help="Skip significance tests")
     parser.add_argument("--significance-iters", type=int, default=500, help="Bootstrap/permutation iterations")
+    parser.add_argument("--ood-data", help="OOD dataset CSV path")
+    parser.add_argument("--ood-url-col", default="url", help="OOD URL column name")
+    parser.add_argument("--ood-label-col", default="label", help="OOD label column name")
+    parser.add_argument("--ood-time-col", default=None, help="OOD time column name")
+    parser.add_argument("--ood-time-cutoff", default=None, help="Use rows >= cutoff as OOD")
+    parser.add_argument("--ood-limit", type=int, default=0, help="Limit OOD rows for faster runs")
+    parser.add_argument("--stability-sparse", default="1.0,0.2,0.05", help="Sparse rates CSV")
+    parser.add_argument("--stability-poison", type=float, default=0.0, help="Poison rate for feedback")
     args = parser.parse_args(argv)
 
     rows = load_dataset(Path(args.data), args.url_col, args.label_col, args.time_col)
+    if args.max_rows and len(rows) > args.max_rows:
+        rng = random.Random(args.seed)
+        rows = rng.sample(rows, args.max_rows)
     output_dir = Path(args.output_dir)
 
     baselines = [
@@ -781,8 +1082,21 @@ def main(argv: list[str] | None = None) -> int:
         "ablations": {"time": {}, "random": {}},
         "calibration_compare": {},
         "reliability": {},
+        "calibration_drift": {},
         "adversarial": {},
         "significance": {},
+        "error_buckets": {},
+        "review_impact": {},
+        "ood": {},
+        "offpolicy_stability": {},
+        "dataset": {
+            "path": args.data,
+            "sha256": _sha256_file(Path(args.data)),
+            "rows": len(rows),
+            "max_rows": args.max_rows,
+            "seed": args.seed,
+            "test_ratio": args.test_ratio,
+        },
     }
 
     split_eval_data: dict[str, dict[str, Any]] = {}
@@ -902,6 +1216,38 @@ def main(argv: list[str] | None = None) -> int:
                 ml_contexts["ensemble"],
                 args.seed,
             )
+            summary["error_buckets"][split_name] = {
+                "static-fusion": evaluate_error_buckets(
+                    test_urls,
+                    test_labels,
+                    "static-fusion",
+                    ml_contexts["ensemble"],
+                    args.seed,
+                ),
+                "rl-v2": evaluate_error_buckets(
+                    test_urls,
+                    test_labels,
+                    "rl-v2",
+                    ml_contexts["ensemble"],
+                    args.seed,
+                ),
+            }
+            summary["review_impact"][split_name] = {
+                "static-fusion": evaluate_review_impact(
+                    test_urls,
+                    test_labels,
+                    "static-fusion",
+                    ml_contexts["ensemble"],
+                    args.seed,
+                ),
+                "rl-v2": evaluate_review_impact(
+                    test_urls,
+                    test_labels,
+                    "rl-v2",
+                    ml_contexts["ensemble"],
+                    args.seed,
+                ),
+            }
 
         if args.plots:
             plot_summary(split_summary, output_dir / "plots", split_name)
@@ -928,43 +1274,90 @@ def main(argv: list[str] | None = None) -> int:
                 seed,
             )
 
+            baseline_scores_cache: dict[str, tuple[list[float], list[int]]] = {
+                "static-fusion": (base_scores, base_preds),
+                "rl-v2": (target_scores, target_preds),
+            }
+
+            baseline_deltas: dict[str, Any] = {}
+            for baseline in baselines:
+                if baseline == "static-fusion":
+                    continue
+                if baseline in baseline_scores_cache:
+                    scores, preds = baseline_scores_cache[baseline]
+                else:
+                    baseline_context = select_ml_context(baseline, ml_contexts)
+                    scores, preds = evaluate_baseline_scores(
+                        test_urls,
+                        test_labels,
+                        baseline,
+                        baseline_context,
+                        seed,
+                        enable_enrichment=baseline != "fusion-no-enrichment",
+                        enable_context_enrichment=baseline not in {"fusion-no-enrichment", "fusion-no-rl"},
+                    )
+                    baseline_scores_cache[baseline] = (scores, preds)
+
+                baseline_deltas[baseline] = {
+                    "auroc": {
+                        "bootstrap": bootstrap_diff(
+                            test_labels,
+                            scores,
+                            base_scores,
+                            _metric_auroc,
+                            args.significance_iters,
+                            args.seed,
+                        ),
+                        "p_value": permutation_test(
+                            test_labels,
+                            scores,
+                            base_scores,
+                            _metric_auroc,
+                            args.significance_iters,
+                            args.seed,
+                        ),
+                    },
+                    "auprc": {
+                        "bootstrap": bootstrap_diff(
+                            test_labels,
+                            scores,
+                            base_scores,
+                            _metric_auprc,
+                            args.significance_iters,
+                            args.seed,
+                        ),
+                        "p_value": permutation_test(
+                            test_labels,
+                            scores,
+                            base_scores,
+                            _metric_auprc,
+                            args.significance_iters,
+                            args.seed,
+                        ),
+                    },
+                    "f1": {
+                        "bootstrap": bootstrap_diff(
+                            test_labels,
+                            cast(list[float], preds),
+                            cast(list[float], base_preds),
+                            cast(Callable[[list[int], list[float]], float], _metric_f1),
+                            args.significance_iters,
+                            args.seed,
+                        ),
+                        "p_value": permutation_test(
+                            test_labels,
+                            cast(list[float], preds),
+                            cast(list[float], base_preds),
+                            cast(Callable[[list[int], list[float]], float], _metric_f1),
+                            args.significance_iters,
+                            args.seed,
+                        ),
+                    },
+                }
+
             summary["significance"][split_name] = {
-                "auroc": {
-                    "bootstrap": bootstrap_diff(
-                        test_labels,
-                        target_scores,
-                        base_scores,
-                        _metric_auroc,
-                        args.significance_iters,
-                        args.seed,
-                    ),
-                    "p_value": permutation_test(
-                        test_labels,
-                        target_scores,
-                        base_scores,
-                        _metric_auroc,
-                        args.significance_iters,
-                        args.seed,
-                    ),
-                },
-                "f1": {
-                    "bootstrap": bootstrap_diff(
-                        test_labels,
-                        cast(list[float], target_preds),
-                        cast(list[float], base_preds),
-                        cast(Callable[[list[int], list[float]], float], _metric_f1),
-                        args.significance_iters,
-                        args.seed,
-                    ),
-                    "p_value": permutation_test(
-                        test_labels,
-                        cast(list[float], target_preds),
-                        cast(list[float], base_preds),
-                        cast(Callable[[list[int], list[float]], float], _metric_f1),
-                        args.significance_iters,
-                        args.seed,
-                    ),
-                },
+                "baseline": "static-fusion",
+                "deltas": baseline_deltas,
             }
 
     write_runs_csv(output_dir / "benchmark_runs.csv", all_runs)
@@ -986,6 +1379,107 @@ def main(argv: list[str] | None = None) -> int:
                 min_policy_confidence=0.55,
                 max_weight_shift=0.25,
             ).__dict__,
+        }
+        for entry in summary["offpolicy"].values():
+            count = entry.get("count", 0) or 0
+            violations = entry.get("guardrail_violations", 0) or 0
+            entry["guardrail_violation_rate"] = violations / max(count, 1)
+
+        sparse_rates = [float(value) for value in args.stability_sparse.split(",") if value.strip()]
+        seeds = [args.seed + offset for offset in range(args.seeds)]
+        summary["offpolicy_stability"] = {
+            "rl-v1": evaluate_policy_stability(
+                args.feedback_store,
+                BanditPolicy("models/policy.json"),
+                seeds,
+                sparse_rates,
+                args.stability_poison,
+                fn_cost=3.0,
+                fp_cost=1.0,
+                min_policy_confidence=0.55,
+                max_weight_shift=0.25,
+            ),
+            "rl-v2": evaluate_policy_stability(
+                args.feedback_store,
+                ThompsonSamplingPolicy("models/policy.json", seed=args.seed),
+                seeds,
+                sparse_rates,
+                args.stability_poison,
+                fn_cost=3.0,
+                fp_cost=1.0,
+                min_policy_confidence=0.55,
+                max_weight_shift=0.25,
+            ),
+        }
+
+    if args.ood_data or args.ood_time_cutoff:
+        if args.ood_data:
+            ood_rows = load_dataset(
+                Path(args.ood_data),
+                args.ood_url_col,
+                args.ood_label_col,
+                args.ood_time_col,
+            )
+            ood_meta: dict[str, Any] = {
+                "path": args.ood_data,
+                "sha256": _sha256_file(Path(args.ood_data)),
+            }
+        else:
+            cutoff = _parse_time(args.ood_time_cutoff or "")
+            ood_rows = [row for row in rows if cutoff is not None and row.get("time") and row["time"] >= cutoff]
+            ood_meta = {
+                "time_cutoff": args.ood_time_cutoff,
+                "count": len(ood_rows),
+            }
+
+        if args.ood_limit and len(ood_rows) > args.ood_limit:
+            rng = random.Random(args.seed)
+            ood_rows = rng.sample(ood_rows, args.ood_limit)
+            ood_meta["ood_limit"] = args.ood_limit
+
+        ood_urls = [row["url"] for row in ood_rows]
+        ood_labels = [row["label"] for row in ood_rows]
+
+        model_source = "time" if "time" in split_eval_data else "random"
+        ood_contexts = split_eval_data.get(model_source, {}).get("ml_contexts")
+
+        if ood_urls and ood_contexts:
+            summary["ood"] = {
+                "meta": ood_meta | {"model_source_split": model_source, "count": len(ood_urls)},
+                "static-fusion": evaluate_baseline(
+                    ood_urls,
+                    ood_labels,
+                    "static-fusion",
+                    ood_contexts["ensemble"],
+                    args.seed,
+                ).__dict__,
+                "rl-v2": evaluate_baseline(
+                    ood_urls,
+                    ood_labels,
+                    "rl-v2",
+                    ood_contexts["ensemble"],
+                    args.seed,
+                ).__dict__,
+                "reliability": evaluate_reliability(
+                    ood_urls,
+                    ood_labels,
+                    ood_contexts["ensemble"],
+                    args.seed,
+                ),
+                "review_impact": evaluate_review_impact(
+                    ood_urls,
+                    ood_labels,
+                    "rl-v2",
+                    ood_contexts["ensemble"],
+                    args.seed,
+                ),
+            }
+
+    if "time" in split_eval_data:
+        drift_contexts = split_eval_data["time"]["ml_contexts"]
+        summary["calibration_drift"] = {
+            "static-fusion": evaluate_calibration_drift(rows, "static-fusion", drift_contexts["ensemble"], args.seed),
+            "rl-v2": evaluate_calibration_drift(rows, "rl-v2", drift_contexts["ensemble"], args.seed),
         }
 
     (output_dir / "benchmark_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")

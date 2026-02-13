@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
-from phish_detector.enrichment import DomainEnrichment
 from phish_detector.intent import find_intent_tokens
 from phish_detector.parsing import ParsedURL
 from phish_detector.typosquat import TyposquatMatch, keyboard_adjacent_score
@@ -25,6 +24,18 @@ class BrandRiskConfig:
     enable_age: bool = True
     enable_reputation: bool = True
     enable_volatility: bool = True
+
+
+class EnrichmentLike(Protocol):
+    registrable_domain: str
+    age_days: int | None
+    age_trust: float
+    asn: str | None
+    asn_org: str | None
+    reputation_trust: float
+    reputation_reasons: list[str]
+    volatility_score: float
+    ip_addresses: list[str]
 
 
 def _sigmoid(value: float) -> float:
@@ -48,7 +59,7 @@ def compute_brand_typo_risk(
     parsed: ParsedURL,
     features: dict[str, Any],
     match: TyposquatMatch | None,
-    enrichment: DomainEnrichment,
+    enrichment: EnrichmentLike,
     config: BrandRiskConfig | None = None,
 ) -> BrandRiskResult:
     config = config or BrandRiskConfig()
