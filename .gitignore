@@ -90,6 +90,7 @@ results/
 checkpoints/
 temp/
 tmp/
+_LOCAL_DOCS/
 
 # Environment variables
 .env

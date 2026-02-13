@@ -208,32 +208,6 @@ This document outlines the threat model, adversarial assumptions, and fundamenta
 
 ---
 
-## 5. Deployment Recommendations
-
-### 5.1 Responsible Deployment Checklist
-
-- [ ] **Do NOT use as sole phishing defense.** Combine with other signals (page content analysis, user education, email authentication).
-- [ ] **Monitor false positive rate in production.** Set alerts if FPR > 2% (legitimate users may bypass, reducing security).
-- [ ] **Retrain quarterly or when concept drift detected.** Use production feedback to identify new phishing patterns.
-- [ ] **Maintain human review queue (abstain threshold).** Direct uncertain predictions (p < 0.6) to analysts.
-- [ ] **Log all predictions and outcomes.** Use feedback to detect model degradation and retrain.
-- [ ] **Validate on brand-specific OOD data.** Ensure model generalizes to your user population.
-- [ ] **Gracefully handle enrichment failures.** DNS/API unavailability should not cascade to incorrect predictions.
-
-### 5.2 Abstention Strategy (Review Queue)
-
-**Recommendation:** 
-- Set abstention threshold at min_confidence=0.6 (model confidence < 60%)
-- Route uncertain URLs to analyst review instead of auto-blocking
-- **Impact (measured):** Precision increases from 0.36 → 0.82 when abstaining on uncertain URLs
-
-**Rationale:**
-- Analysts can assess context (user profile, email sender, page design)
-- URL alone insufficient; human judgment adds high-value signal
-- Trade-off: Higher operational cost vs. lower false positive rate
-
----
-
 ## 6. Out-of-Scope Threats
 
 **Threat 1: SSL/TLS Certificate Fraud**

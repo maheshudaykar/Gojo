@@ -13,16 +13,12 @@ This section documents limitations in the Gojo benchmark and evaluation methodol
 
 **Impact**: Confidence intervals wide (CI95 often 0.05-0.10 width); small dataset fluctuations significantly affect results.
 
-**Recommendation**: Validation on 10k+ URLs recommended before production deployment.
-
 #### 1.2 Brand Bias
 - Training data concentrated on top brands (Amazon, Google, PayPal, Microsoft)
 - SMBs and international businesses under-represented
 - Typosquatting for long-tail brands poorly evaluated
 
-**Impact**: Model may not generalize to your specific brand portfolio.
-
-**Recommendation**: Create brand-specific validation set from your user base.
+**Impact**: Model may not generalize to specific brand portfolios.
 
 #### 1.3 Temporal Bias
 - Benchmark uses static 50-year window (no concept drift)
@@ -31,18 +27,14 @@ This section documents limitations in the Gojo benchmark and evaluation methodol
 
 **Impact**: Evaluation performance may be optimistic compared to steady-state production.
 
-**Recommendation**: Monthly retraining recommended; quarterly drift detection validation.
-
-#### 1.4 Benign URL Distribution
+**Recommendation**: Monthly retraining recommended; quarterly drift detection validation due to static temporal window
 - Benign URLs from Tranco (top web domains)
 - Rare: URLs from emerging services, international sites, specialized SaaS
 - False positive rate may be underestimated for atypical legitimate sites
 
 **Impact**: Production FPR may exceed benchmark estimates.
 
-**Recommendation**: Include brand-specific benign URLs in validation set.
-
----
+**Recommendation**: Incfalse positive rate may exceed benchmark estimates for atypical URLs
 
 ### 2. Methodological Limitations
 
@@ -55,18 +47,14 @@ This section documents limitations in the Gojo benchmark and evaluation methodol
 
 **Recommendation**: Define your own cost model (FP cost vs FN cost) and optimize threshold accordingly.
 
-#### 2.2 Confidence Interval Limitations
-- **Bootstrap**: 500 iterations (standard); wider CIs acceptable for early research
-- **Permutation test**: 500 iterations; p-value precision ±0.002
+#### 2.2 Confidence Interval Lmay differ depending on deployment-specific false positive/negative cost ratios
 - **Assumes**: i.i.d. test data (may be violated if URLs from same phishing campaign)
 
 **Impact**: Reported CIs may be slightly conservative/optimistic.
 
 **Recommendation**: Re-bootstrap on your own dataset for production confidence intervals.
 
-#### 2.3 Time Split Bias
-- **Time split**: Uses temporal order of training data
-- **Assumes**: Older data ≈ similar distribution as newer data (may not hold for concept drift)
+#### 2.3 Time Split Bconfidence intervals may be slightly conservative or optimistic on different data distributiont drift)
 - **Random split**: Overly optimistic (train/test from same distribution)
 
 **Impact**: Time split may still overestimate real-world performance if attacker strategies shift rapidly.
@@ -74,8 +62,6 @@ This section documents limitations in the Gojo benchmark and evaluation methodol
 **Recommendation**: Validate on held-out future data (production deployment) to measure true drift.
 
 ---
-
-### 3. Model Limitations
 
 #### 3.1 Lexical Model Constraints
 - **Max URL length**: 2048 characters (Unicode-aware tokenization)
@@ -89,8 +75,6 @@ This section documents limitations in the Gojo benchmark and evaluation methodol
 #### 3.2 Character N-Gram Model Constraints
 - **Max n-gram size**: 5 (capturing ~5-character patterns)
 - **Vocabulary**: 10,000 most frequent n-grams
-- **No positional bias**: Treats initial/final characters same as middle
-
 **Impact**: Long-range dependencies in URL not captured; global patterns missed.
 
 **Recommendation**: Consider RNN or Transformer models for deeper semantic understanding.
@@ -98,8 +82,6 @@ This section documents limitations in the Gojo benchmark and evaluation methodol
 #### 3.3 Ensemble Voting Constraints
 - **5 base learners**: rules-only, lexical, character, fusion (static), fusion (RL)
 - **Simple average**: Equal weight to all learners (no learned weights)
-- **No adaptive thresholding**: Fixed decision boundary across all test samples
-
 **Impact**: Learners with poor performance on specific URL patterns not deprioritized.
 
 **Recommendation**: Stacking or learned ensemble weights could improve robustness.
@@ -107,8 +89,6 @@ This section documents limitations in the Gojo benchmark and evaluation methodol
 ---
 
 ### 4. Enrichment Limitations
-
-#### 4.1 DNS Enrichment Constraints
 - **Query timeout**: 5 seconds (may be too strict for slow nameservers)
 - **Cache TTL**: Not implemented (repeated lookups re-query DNS)
 - **No recursive resolution**: May miss records behind CNAME chains
@@ -122,17 +102,13 @@ This section documents limitations in the Gojo benchmark and evaluation methodol
 - **ASN lookups**: MaxMind GeoIP database (may be outdated)
 - **No real-time threat feeds**: Relies on historical data only
 
-**Impact**: Reputations stale; cannot detect newly weaponized infrastructure.
-
 **Recommendation**: Subscribe to real-time threat intel feeds (e.g., Abuseipdb, URLhaus).
 
 ---
 
 ### 5. Evaluation Scenario Limitations
 
-#### 5.1 Adversarial Perturbation Limits
-- **Perturbation budget**: 1-2 character edits (Damerau-Levenshtein distance)
-- **Attack types**: Typo, transposition, homoglyph, URL encoding, subdomain abuse
+#### 5.1 Adversarial Perturbation Limits as it emerges
 - **No biological constraints**: Does not consider human-recognizable typos vs. random mutations
 
 **Impact**: May miss sophisticated homoglyph attacks or brand-confusion tactics.
@@ -145,18 +121,14 @@ This section documents limitations in the Gojo benchmark and evaluation methodol
 - **No realistic feedback distribution**: Assumes uniform sampling (may be biased to popular brands)
 
 **Impact**: Off-policy evaluation may not reflect real-world feedback patterns.
-
-**Recommendation**: Capture real feedback distribution from pilot production deployment.
-
+ not represented in perturbation suite
 ---
 
 ### 6. Comparison & Baseline Limitations
 
 #### 6.1 Baseline Selection
 - **Baselines**: 8 learners (rules, lexical, char, 3 fusion variants, 2 RL)
-- **No external comparisons**: Does not compare to commercial services (Symantec, Fortinet)
-- **No recent ML baselines**: Does not compare to transformer models, graph-neural networks
-
+- **No external comparisons**: Does not compare to commercial services (Symant in production deployments
 **Impact**: Cannot contextualize performance relative to industry standards.
 
 **Recommendation**: Benchmark against open-source baselines (PhishTank's own ML model, URLhaus ML).
@@ -167,9 +139,7 @@ This section documents limitations in the Gojo benchmark and evaluation methodol
 - **No interaction analysis**: Assumes features independent (may miss important feature pairs)
 
 **Impact**: Ablation results may not transfer to more complex architectures.
-
-**Recommendation**: Extend ablations to deep learning architectures.
-
+Performance cannot be contextualized relative to commercial services or recent ML baselines
 ---
 
 ### 7. Reproducibility Limitations
@@ -178,9 +148,7 @@ This section documents limitations in the Gojo benchmark and evaluation methodol
 - **Randomness seeds**: 5 different seeds used (deterministic per seed, but results vary)
 - **Library versions**: sklearn, numpy versions affect numerical precision
 - **DNS timing**: Enrichment queries non-deterministic if network latency varies
-
-**Impact**: Results not exactly reproducible across different runs/machines.
-
+using linear/SVM models may not transfer to more complex
 **Mitigation**: Manifest captures code commit + data hashes + seed for reproducibility.
 
 #### 7.2 Dependency Constraints
@@ -191,18 +159,14 @@ This section documents limitations in the Gojo benchmark and evaluation methodol
 **Impact**: Code may not run on older/newer Python versions.
 
 **Recommendation**: Package as Docker container with pinned dependencies.
-
----
-
+ due to non-deterministic components
 ### 8. Generalization Limitations
 
 #### 8.1 Out-of-Distribution Scenarios NOT Covered
 - **Mobile URLs**: Encoded/shortened URLs not in Tranco top-1M
 - **Internationalized URLs**: Non-Latin characters (Cyrillic, Arabic, CJK)
 - **Enterprise URLs**: Internal corporate URLs, VPN-gated URLs
-- **URL shorteners**: Tinyurl, bit.ly (resolved URLs unknown)
-
-**Impact**: Model performance on these scenarios unknown.
+- **URL shorteners**: Tinyurl, bit.ly (resolved URLs unknow without dependency adjustment
 
 **Recommendation**: Create OOD subsets for each scenario type.
 
@@ -216,18 +180,14 @@ This section documents limitations in the Gojo benchmark and evaluation methodol
 **Recommendation**: Monitor production metrics; trigger retraining if drift detected.
 
 ---
-
-### 9. Operational Limitations
-
+out-of-distribution scenarios is unknown
 #### 9.1 Latency Constraints
 - **Target**: p50 < 10ms, p95 < 20ms per URL
 - **Measured**: p50 ≈ 6-7ms, p95 ≈ 10-15ms (without enrichment)
 - **With enrichment**: p95 > 100ms (DNS lookups add latency)
 
 **Impact**: Enrichment features unavailable in low-latency environments.
-
-**Recommendation**: Pre-cache enrichment; batch requests; use async DNS queries.
-
+ without periodic retraining
 #### 9.2 Deployment Complexity
 - **Service dependencies**: DNS resolver, enrichment API, feedback store
 - **Trust boundary crossing**: URLs parsed, scores logged, decisions stored
@@ -240,18 +200,14 @@ This section documents limitations in the Gojo benchmark and evaluation methodol
 ---
 
 ### 10. Future Work & Open Questions
-
-1. **Can we achieve <5% false positive rate without analyst review?**
-   - Current work suggests no; inherent URL-only limitation
+may be unavailable in strict low-latency environment
    - Potential solution: Combine with page content analysis
 
 2. **How does performance degrade under adversarial re-training (attacker knows model)?**
    - Current evaluation assumes attacker doesn't observe model
    - Potential solution: Adversarial robustness certification
 
-3. **Can we detect concept drift automatically and trigger retraining?**
-   - Current work uses manual quarterly schedule
-   - Potential solution: ADWIN, DDM-based drift detection
+3. **Can we detect concecomplexity and potential single points of failure in external service dependenci
 
 4. **How does model transfer to different brand portfolios?**
    - Current evaluation on general web domains
