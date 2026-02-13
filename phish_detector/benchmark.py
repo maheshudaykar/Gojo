@@ -8,6 +8,7 @@ import math
 import random
 import statistics
 import time
+import uuid
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Literal, cast
@@ -32,6 +33,7 @@ from sklearn.svm import LinearSVC
 from phish_detector.adversarial import generate_perturbations
 from phish_detector.analyze import AnalysisConfig, analyze_url
 from phish_detector.brand_risk import BrandRiskConfig
+from phish_detector.experiment_manifest import create_experiment_manifest
 from phish_detector.features import extract_features, load_suspicious_tlds, vectorize_features
 from phish_detector.feedback import FeedbackEntry, load_entries
 from phish_detector.offpolicy import OffPolicyResult, evaluate_offpolicy, evaluate_offpolicy_entries
@@ -1483,6 +1485,22 @@ def main(argv: list[str] | None = None) -> int:
         }
 
     (output_dir / "benchmark_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    # Generate experiment manifest for reproducibility
+    run_id = f"gojo-benchmark-{uuid.uuid4().hex[:8]}"
+    cli_args_dict = vars(args)
+    
+    manifest = create_experiment_manifest(
+        run_id=run_id,
+        train_data_path=args.data,
+        cli_args=cli_args_dict,
+        ood_data_path=args.ood_data if args.ood_data else None,
+        results_path=output_dir,
+        runtime_seconds=time.time(),  # This should be start_time captured earlier
+    )
+    
+    manifest.to_json(output_dir / f"manifest_{run_id}.json")
+    print(f"Experiment manifest: {output_dir / f'manifest_{run_id}.json'}")
 
     return 0
 

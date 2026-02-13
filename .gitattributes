@@ -1,0 +1,23 @@
+# Git LFS configuration for large dataset files
+# Uncomment below to enable LFS for large CSV files
+
+# Large dataset files (> 10 MB)
+# *.csv filter=lfs diff=lfs merge=lfs -text
+
+# Compressed archives
+# *.zip filter=lfs diff=lfs merge=lfs -text
+# *.tar.gz filter=lfs diff=lfs merge=lfs -text
+
+# Model checkpoint files (if added in future)
+# *.pkl filter=lfs diff=lfs merge=lfs -text
+# *.joblib filter=lfs diff=lfs merge=lfs -text
+# *.pth filter=lfs diff=lfs merge=lfs -text
+
+# Large JSON files (> 50 MB)
+# *.json filter=lfs diff=lfs merge=lfs -text
+
+# Note: Current OOD datasets are small (~0.5 MB total).
+# As benchmark scales to 100k+ URLs, uncomment the lines above and run:
+#   git lfs install
+#   git lfs migrate import --include="data/ood/*.csv"
+#   git push origin --force-with-lease
