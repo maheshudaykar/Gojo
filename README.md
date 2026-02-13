@@ -64,6 +64,7 @@ Built for **real-world deployment**, this tool achieves **96% accuracy** while r
 - 🔄 **Auto-Shutdown**: Browser lifecycle management
 - 🌐 **WSGI Ready**: Deploy with Waitress/Gunicorn
 - 🧭 **Domain Enrichment**: RDAP-based age/ASN + DNS volatility signals
+- ⚖️ **Cost-Sensitive Rewards**: Tunable FN/FP costs for policy updates
 
 ---
 
@@ -95,6 +96,12 @@ source .venv/bin/activate
 pip install -r requirements_production.txt
 ```
 
+For development (tests/type/lint):
+```bash
+pip install -r requirements.txt
+pip install -e .
+```
+
 ### 4. Download Dataset (Optional)
 ```bash
 # Clone dataset repository
@@ -116,6 +123,13 @@ python -m webapp.app
 ```
 
 Visit **http://127.0.0.1:5000** 🎉
+
+### 7. Verify (optional but recommended)
+```bash
+python -m pytest
+python -m mypy .
+python -m flake8
+```
 
 ---
 

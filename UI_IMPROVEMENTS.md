@@ -74,6 +74,7 @@ Organized in collapsible `<details>` section (open by default) for better organi
 ✅ **Better understanding**: ML mode descriptions help users choose  
 ✅ **Transparency**: Policy card shows how RL agent is making decisions  
 ✅ **Professional appearance**: Modern dark UI with smooth interactions  
+✅ **Gauge hydration**: Progress bars now hydrate via `data-width` to avoid template flash  
 
 ## Technical Notes
 - Server remains at http://127.0.0.1:5000
@@ -82,16 +83,7 @@ Organized in collapsible `<details>` section (open by default) for better organi
 - Policy still operates in shadow mode (tracks but doesn't update)
 - Compatible with existing trained models
 
-## Testing Recommendations
-1. Test with phishing URL (should show RED verdict)
-2. Test with legitimate URL (should show GREEN)
-3. Test with suspicious features (should show YELLOW)
-4. Verify policy card updates after analysis
-5. Check detailed section expands/collapses
-6. Test CSV upload (bulk results at top)
-7. Verify responsive design on mobile viewport
-
 ---
 **Status**: ✅ All improvements implemented and tested  
-**Last Updated**: February 11, 2026  
+**Last Updated**: February 13, 2026  
 **Compatibility**: Python 3.10+, Flask 3.0+, modern browsers

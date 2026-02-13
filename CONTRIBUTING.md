@@ -199,14 +199,14 @@ docs/update-contributing-guide
 
 4. **Test locally**
    ```bash
-   # Run tests
-   python -m pytest tests/
-   
-   # Check types
-   python -m mypy phish_detector/
-   
-   # Check style
-   python -m pylint phish_detector/
+    # Run tests
+    python -m pytest
+
+    # Check types
+    python -m mypy .
+
+    # Check lint (flake8 config is in repo root)
+    python -m flake8
    ```
 
 5. **Commit changes**
@@ -228,13 +228,13 @@ docs/update-contributing-guide
 
 ### Python Style Guide
 
-We follow **PEP 8** with some modifications:
+We follow **PEP 8** with repo-specific tweaks:
 
-- **Line length**: 100 characters max
+- **Line length**: 120 characters (see `.flake8`)
 - **Indentation**: 4 spaces (no tabs)
 - **Quotes**: Double quotes for strings
 - **Type hints**: Required for all functions
-- **Docstrings**: Required for all public functions (Google style)
+- **Docstrings**: Required for public functions (Google style)
 
 **Example:**
 

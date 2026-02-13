@@ -112,6 +112,14 @@ logger.error(f"Analysis error: {str(e)}", exc_info=True)
 
 ---
 
+### 4. **Developer Tooling & Quality Gates** ✅
+
+- Added project-wide lint config `.flake8` (line length 120, ignore venv/build artifacts)
+- Standardized local checks: `python -m pytest`, `python -m mypy .`, `python -m flake8`
+- Docs updated to reflect Thompson Sampling (v2) defaults and new cost-sensitive reward knobs
+
+---
+
 ## 📖 How to Use Production System
 
 ### Quick Start
