@@ -51,7 +51,7 @@ def main() -> int:
     if args.benchmark_data:
         from phish_detector.benchmark import main as bench_main
 
-        bench_args = [
+        bench_args: list[str] = [
             "--data",
             args.benchmark_data,
             "--url-col",

@@ -16,4 +16,14 @@ work
 support
 stream
 monster
-press
+press# Commonly abused country-code TLDs
+ml
+ga
+cf
+tk
+ee
+ge
+gg
+kz
+py
+ws

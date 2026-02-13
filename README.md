@@ -66,6 +66,16 @@ Built for **real-world deployment**, this tool achieves **96% accuracy** while r
 - 🧭 **Domain Enrichment**: RDAP-based age/ASN + DNS volatility signals
 - ⚖️ **Cost-Sensitive Rewards**: Tunable FN/FP costs for policy updates
 
+### Advanced Detection Features (NEW!)
+- 🌐 **Content Analysis**: HTML/page inspection for credential forms, suspicious JavaScript, and brand impersonation
+- 📊 **Drift Detection**: Monitors feature distribution shifts using Population Stability Index (PSI)
+- 🎯 **Dynamic TLD Learning**: Real-time learning of suspicious TLD patterns from production traffic
+- 🕵️ **Attack Pattern Recognition**: Fingerprints and tracks emerging phishing techniques
+- 🔍 **Adaptive Scoring**: Automatically adjusts detection thresholds based on drift signals
+- 🛡️ **Multi-Layer Defense**: Combines URL analysis, content inspection, and behavioral patterns
+
+**Note**: Content analysis requires live URLs. Historical/dead phishing URLs return limited content data.
+
 ---
 
 ## 🚀 Quick Start
@@ -175,7 +185,11 @@ config = AnalysisConfig(
     lexical_model="models/lexical_model.joblib",
     char_model="models/char_model.joblib",
     policy_path="models/policy.json",
-    feedback_store="models/feedback.json"
+    feedback_store="models/feedback.json",
+    # Advanced features (optional)
+    enable_content_analysis=True,      # HTML/page inspection
+    enable_advanced_detection=True,    # Drift detection, TLD learning
+    models_dir="models"
 )
 
 # Analyze
@@ -185,6 +199,18 @@ report, extra = analyze_url("https://suspicious-url.com", config, ml_context, po
 
 print(f"Score: {report['summary']['score']}")
 print(f"Label: {report['summary']['label']}")  # green/yellow/red
+
+# Advanced enhancements (if enabled)
+if 'advanced_enhancements' in extra:
+    adv = extra['advanced_enhancements']
+    print(f"Dynamic TLD: {adv.get('dynamic_tld', {}).get('tld')}")
+    print(f"Attack Pattern: {adv.get('attack_pattern', {}).get('technique')}")
+    
+# Content analysis (if URL is live)
+if extra.get('content_analysis'):
+    ca = extra['content_analysis']
+    print(f"Has credential form: {ca.get('has_credential_form')}")
+    print(f"Content risk score: {ca.get('content_risk_score')}")
 ```
 
 ### Enrichment Notes
@@ -206,10 +232,22 @@ print(f"Label: {report['summary']['label']}")  # green/yellow/red
 
 ```
 Input URL → Parser → Feature Extraction → Rules + ML → RL Policy → Final Verdict
-                                            ↓
-                                        Thompson Sampling
-                                        (25 contexts × 4 actions)
+                ↓                             ↓
+            Content Fetch              Thompson Sampling
+         (HTML Analysis)           (25 contexts × 4 actions)
+                ↓                             ↓
+         Advanced Detection             Dynamic TLD Learning
+      (Drift + Attack Pattern)        Attack Pattern Recognition
 ```
+
+**Detection Layers**:
+1. **URL Analysis**: Parse and extract structural features (21 metrics)
+2. **Rule Engine**: Fast heuristic pattern matching (12 rules)
+3. **ML Ensemble**: Lexical + Character n-gram classifiers
+4. **Content Inspection**: HTML forms, JavaScript, visual brand matching (optional)
+5. **Drift Detection**: Monitor distribution shifts and concept drift
+6. **RL Policy**: Thompson Sampling for adaptive weight selection
+7. **Final Verdict**: Multi-signal aggregation with confidence scores
 
 ---
 
@@ -244,20 +282,24 @@ Quick start:
 
 ```
 gojo/
-├── phish_detector/       # Core detection logic
-│   ├── analyze.py        # Main orchestration
-│   ├── features.py       # Feature extraction (21 features)
-│   ├── rules.py          # Heuristic rules (12 rules)
-│   ├── ml_*.py           # ML models (lexical, char, ensemble)
-│   ├── policy_v2.py      # Thompson Sampling RL agent
-│   └── cli.py            # Command-line interface
-├── webapp/               # Web interface
-│   ├── app.py            # Production Flask app (heartbeat, validation)
-│   └── templates/        # HTML templates (dark mode)
-├── data/                 # Training datasets
-├── models/               # Trained models (generated)
-├── tests/                # Unit tests
-└── docs/                 # Documentation
+├── phish_detector/           # Core detection logic
+│   ├── analyze.py            # Main orchestration
+│   ├── features.py           # Feature extraction (21 features)
+│   ├── rules.py              # Heuristic rules (12 rules)
+│   ├── ml_*.py               # ML models (lexical, char, ensemble)
+│   ├── policy_v2.py          # Thompson Sampling RL agent
+│   ├── advanced_detection.py # Multi-layer advanced detection
+│   ├── content_analysis.py   # HTML/page inspection
+│   ├── drift_detection.py    # Distribution shift monitoring
+│   ├── dynamic_tld_learning.py # Real-time TLD risk learning
+│   └── cli.py                # Command-line interface
+├── webapp/                   # Web interface
+│   ├── app.py                # Production Flask app (heartbeat, validation)
+│   └── templates/            # HTML templates (dark mode)
+├── data/                     # Training datasets
+├── models/                   # Trained models (generated)
+├── tests/                    # Unit tests
+└── _LOCAL_DOCS/              # Internal documentation (gitignored)
 ```
 
 ---

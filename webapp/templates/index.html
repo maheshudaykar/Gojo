@@ -180,6 +180,45 @@
                 {% endif %}
               </div>
 
+              <!-- Content Analysis (Advanced Feature) -->
+              {% if results.extra.content_analysis %}
+                <div>
+                  <h3>🔍 Content Analysis</h3>
+                  {% set ca = results.extra.content_analysis %}
+                  <div class="gauge-bar">
+                    <span class="gauge-label">Content Risk Score</span>
+                    <div class="gauge-container">
+                      <div class="gauge-fill {% if ca.content_risk_score >= 70 %}danger{% elif ca.content_risk_score >= 40 %}warning{% endif %}" 
+                           style="width: {{ ca.content_risk_score }}%"></div>
+                    </div>
+                    <span class="gauge-value">{{ ca.content_risk_score }}%</span>
+                  </div>
+                  
+                  {% if ca.signals %}
+                    <div class="chip-list" style="margin-top: 12px;">
+                      {% for signal in ca.signals %}
+                        <span class="chip critical" title="Detected in page content">
+                          <span class="chip-icon">🚨</span>
+                          {{ signal }}
+                        </span>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                  
+                  {% if ca.has_credential_form %}
+                    <p style="margin-top: 8px; padding: 8px; background: rgba(255,59,48,0.1); border-radius: 4px; font-size: 0.9rem;">
+                      <strong>⚠️ Warning:</strong> Page contains credential harvesting form (password field + login form)
+                    </p>
+                  {% endif %}
+                  
+                  {% if ca.score_boost and ca.score_boost > 0 %}
+                    <p style="margin-top: 8px; font-size: 0.9rem; color: #888;">
+                      Content analysis boosted risk score by <strong>+{{ ca.score_boost }}</strong> points
+                    </p>
+                  {% endif %}
+                </div>
+              {% endif %}
+
               <!-- ML Analysis -->
               <div>
                 <h3>ML Analysis</h3>

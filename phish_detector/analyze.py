@@ -62,6 +62,10 @@ class AnalysisConfig:
     enable_abstain: bool = True
     abstain_min_confidence: float = 0.6
     abstain_min_score: int = 60
+    # Advanced detection features
+    enable_content_analysis: bool = False  # Fetch and analyze HTML content
+    enable_advanced_detection: bool = False  # Use drift/TLD learning
+    models_dir: str = "models"  # Directory for advanced models
 
 
 @dataclass
@@ -302,6 +306,55 @@ def analyze_url(
     else:
         final_score = combine_scores(rule_score.score, ml_score, weight, hits)
 
+    # Advanced detection: content analysis and adaptive learning
+    content_analysis_result: dict[str, Any] | None = None
+    advanced_enhancements: dict[str, Any] | None = None
+    
+    if config.enable_content_analysis or config.enable_advanced_detection:
+        try:
+            from phish_detector.advanced_detection import AdvancedDetector
+            
+            advanced_detector = AdvancedDetector(config.models_dir)
+            
+            # Determine if we should perform content analysis
+            # Only fetch content for uncertain verdicts (YELLOW zone) to save resources
+            perform_content = config.enable_content_analysis and (
+                25 < final_score.score < 65  # Uncertain zone
+            )
+            
+            # Get brand target if we detected typosquatting
+            brand_target = brand_risk.matched_brand if typo_match and hasattr(brand_risk, 'matched_brand') else None
+            
+            # Apply advanced detection
+            enhanced = advanced_detector.analyze_url_enhanced(
+                url=parsed.original,
+                features=features,
+                ml_score=ml_score if ml_score is not None else 50,
+                rule_score=rule_score.score,
+                perform_content_analysis=perform_content,
+                brand_target=brand_target,
+                is_phishing=config.label == 'phish' if config.label else None
+            )
+            
+            # Override final score with enhanced score
+            if enhanced.get('final_score') is not None:
+                score_boost = enhanced['final_score'] - final_score.score
+                if score_boost > 0:  # Only apply if it increases detection
+                    final_score = ScoreResult(
+                        score=min(100, enhanced['final_score']),
+                        label=label_for_score(min(100, enhanced['final_score'])),
+                        hits=hits,
+                    )
+            
+            # Store enhancement details
+            advanced_enhancements = enhanced.get('enhancements', {})
+            content_analysis_result = advanced_enhancements.get('content')
+            
+        except ImportError as e:
+            logging.warning(f"Advanced detection unavailable: {e}")
+        except Exception as e:
+            logging.error(f"Advanced detection error: {e}", exc_info=True)
+
     predicted_label = binary_label_for_score(final_score.score)
     review_flag = False
     if config.enable_abstain and ml_score is not None:
@@ -443,5 +496,7 @@ def analyze_url(
         "signals": [
             {"name": hit.name, "details": hit.details, "weight": hit.weight} for hit in hits
         ],
+        "content_analysis": content_analysis_result,  # HTML/page analysis results
+        "advanced_enhancements": advanced_enhancements,  # Drift/TLD/attack tracking
     }
     return report, extra

@@ -18,4 +18,12 @@ linkedin
 reddit
 steam
 binance
-coinbase
+coinbaseroblox
+discord
+twitch
+spotify
+uber
+airbnb
+dropbox
+slack
+stripe

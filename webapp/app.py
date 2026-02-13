@@ -187,6 +187,10 @@ def validate_csv_file(file: Any) -> tuple[bool, str]:
 
 def _build_config(ml_mode: str) -> AnalysisConfig:
     """Build analysis configuration."""
+    # Check for advanced features enablement via environment variables
+    enable_content = os.getenv('GOJO_ENABLE_CONTENT_ANALYSIS', 'true').lower() == 'true'
+    enable_advanced = os.getenv('GOJO_ENABLE_ADVANCED', 'true').lower() == 'true'
+    
     return AnalysisConfig(
         ml_mode=ml_mode,
         lexical_model="models/lexical_model.joblib",
@@ -195,6 +199,9 @@ def _build_config(ml_mode: str) -> AnalysisConfig:
         feedback_store="models/feedback.json",
         shadow_learn=True,  # Shadow mode for web UI
         enable_feedback=False,
+        enable_content_analysis=enable_content,  # Enable HTML/content analysis
+        enable_advanced_detection=enable_advanced,  # Enable drift/TLD learning
+        models_dir="models",  # Directory for advanced models
     )
 
 

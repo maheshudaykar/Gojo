@@ -39,7 +39,7 @@ def evaluate_rules(parsed: ParsedURL) -> tuple[dict[str, FeatureValue], list[Rul
     hits: list[RuleHit] = []
 
     if features["is_suspicious_tld"]:
-        hits.append(RuleHit("suspicious_tld", 20, f"TLD '{features['tld']}' flagged"))
+        hits.append(RuleHit("suspicious_tld", 90, f"TLD '{features['tld']}' flagged"))
 
     if _as_int(features["num_subdomains"]) >= 3:
         hits.append(RuleHit("deep_subdomains", 10, "Excessive subdomain depth"))
