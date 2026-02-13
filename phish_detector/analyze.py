@@ -11,7 +11,13 @@ from phish_detector.policy import BanditPolicy, DEFAULT_WEIGHT
 from phish_detector.reward import cost_sensitive_reward
 from phish_detector.report import build_report
 from phish_detector.rules import RuleHit, evaluate_rules
-from phish_detector.scoring import ScoreResult, binary_label_for_score, combine_scores, compute_score, label_for_score
+from phish_detector.scoring import (
+    ScoreResult,
+    binary_label_for_score,
+    combine_scores,
+    compute_score,
+    label_for_score,
+)
 from phish_detector.policy import context_from_scores
 from phish_detector.typosquat import detect_typosquatting
 
@@ -19,11 +25,11 @@ from phish_detector.typosquat import detect_typosquatting
 # Protocol for policy compatibility (supports both v1 and v2)
 class PolicyProtocol(Protocol):
     """Protocol for policy objects to support both v1 and v2."""
-    
+
     def select_action(self, ml_confidence: float, rule_score: int, **kwargs: Any) -> Any:
         """Select action based on context."""
         ...
-    
+
     def update(self, context: str, action: float, reward: float, **kwargs: Any) -> None:
         """Update policy with reward."""
         ...
@@ -58,7 +64,7 @@ class AnalysisConfig:
     abstain_min_score: int = 60
 
 
-@dataclass(frozen=True)
+@dataclass
 class EnrichmentFallback:
     registrable_domain: str
     age_days: int | None
@@ -78,11 +84,19 @@ def load_ml_context(config: AnalysisConfig) -> dict[str, Any] | None:
         if config.ml_mode == "lexical":
             from phish_detector.ml_lexical import load_lexical_model
 
-            return {"mode": "lexical", "model": load_lexical_model(config.lexical_model), "available": True}
+            return {
+                "mode": "lexical",
+                "model": load_lexical_model(config.lexical_model),
+                "available": True,
+            }
         if config.ml_mode == "char":
             from phish_detector.ml_char_ngram import load_char_model
 
-            return {"mode": "char", "model": load_char_model(config.char_model), "available": True}
+            return {
+                "mode": "char",
+                "model": load_char_model(config.char_model),
+                "available": True,
+            }
         from phish_detector.ml_ensemble import load_models
 
         lexical_model, char_model = load_models(config.lexical_model, config.char_model)
@@ -148,7 +162,10 @@ def analyze_url(
                 RuleHit(
                     "brand_typo_contextual_high",
                     18,
-                    f"Brand typo risk {brand_risk.score:.1f} corroborated by {', '.join(brand_risk.corroborating)}",
+                    (
+                        f"Brand typo risk {brand_risk.score:.1f} corroborated by "
+                        f"{', '.join(brand_risk.corroborating)}"
+                    ),
                 )
             )
         elif brand_risk.score >= 45:
@@ -226,9 +243,15 @@ def analyze_url(
                     age_bucket = "age_mid"
                 else:
                     age_bucket = "age_old"
-            rep_bucket = "rep_low" if enrichment.reputation_trust < 0.35 else "rep_high" if enrichment.reputation_trust > 0.7 else "rep_mid"
+            rep_bucket = "rep_low"
+            if enrichment.reputation_trust > 0.7:
+                rep_bucket = "rep_high"
+            elif enrichment.reputation_trust >= 0.35:
+                rep_bucket = "rep_mid"
             context_parts.extend([age_bucket, rep_bucket])
-            context_override = f"{context_from_scores(ml_confidence, rule_score.score)}|" + "|".join(context_parts)
+            context_override = (
+                f"{context_from_scores(ml_confidence, rule_score.score)}|" + "|".join(context_parts)
+            )
         decision = policy.select_action(
             ml_confidence,
             rule_score.score,
@@ -271,20 +294,31 @@ def analyze_url(
     if config.score_mode == "rules_only" or ml_score is None:
         final_score = rule_score
     elif config.score_mode == "ml_only":
-        final_score = ScoreResult(score=ml_score, label=label_for_score(ml_score), hits=hits)
+        final_score = ScoreResult(
+            score=ml_score,
+            label=label_for_score(ml_score),
+            hits=hits,
+        )
     else:
         final_score = combine_scores(rule_score.score, ml_score, weight, hits)
 
     predicted_label = binary_label_for_score(final_score.score)
     review_flag = False
     if config.enable_abstain and ml_score is not None:
-        if ml_confidence < config.abstain_min_confidence and final_score.score >= config.abstain_min_score:
+        if (
+            ml_confidence < config.abstain_min_confidence
+            and final_score.score >= config.abstain_min_score
+        ):
             review_flag = True
     feedback_info: dict[str, Any] | None = None
 
     if config.enable_feedback:
         if config.resolve_feedback and config.label:
-            resolved = resolve_feedback(config.resolve_feedback, config.label, config.feedback_store)
+            resolved = resolve_feedback(
+                config.resolve_feedback,
+                config.label,
+                config.feedback_store,
+            )
             if resolved is None:
                 feedback_info = {"status": "missing", "id": config.resolve_feedback}
             elif ml_score is not None and resolved.confidence >= 0.55:
@@ -297,8 +331,16 @@ def analyze_url(
                         config.fp_cost,
                     )
                 else:
-                    reward = resolved.confidence if resolved.predicted_label == config.label else -resolved.confidence
-                (policy or BanditPolicy(config.policy_path)).update(resolved.context, resolved.action, reward)
+                    reward = (
+                        resolved.confidence
+                        if resolved.predicted_label == config.label
+                        else -resolved.confidence
+                    )
+                (policy or BanditPolicy(config.policy_path)).update(
+                    resolved.context,
+                    resolved.action,
+                    reward,
+                )
                 feedback_info = {"status": "resolved", "id": resolved.id, "updated": True}
             else:
                 feedback_info = {"status": "resolved", "id": resolved.id, "updated": False}
@@ -328,8 +370,16 @@ def analyze_url(
                             config.fp_cost,
                         )
                     else:
-                        reward = ml_confidence if predicted_label == config.label else -ml_confidence
-                    (policy or BanditPolicy(config.policy_path)).update(entry.context, entry.action, reward)
+                        reward = (
+                            ml_confidence
+                            if predicted_label == config.label
+                            else -ml_confidence
+                        )
+                    (policy or BanditPolicy(config.policy_path)).update(
+                        entry.context,
+                        entry.action,
+                        reward,
+                    )
                     feedback_info = {"status": "resolved", "id": entry.id, "updated": True}
                 else:
                     feedback_info = {"status": "resolved", "id": entry.id, "updated": False}
@@ -367,7 +417,9 @@ def analyze_url(
             },
         },
     )
-    report["summary"]["decision"] = "review" if review_flag else "block" if predicted_label == "phish" else "allow"
+    report["summary"]["decision"] = (
+        "review" if review_flag else "block" if predicted_label == "phish" else "allow"
+    )
     report["summary"]["review"] = review_flag
     extra: dict[str, Any] = {
         "rule_score": rule_score.score,

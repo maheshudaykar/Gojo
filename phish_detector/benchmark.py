@@ -9,6 +9,7 @@ import random
 import statistics
 import time
 import uuid
+from datetime import datetime
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Literal, cast
@@ -99,9 +100,7 @@ def _parse_time(value: str) -> float | None:
         return None
 
 
-def datetime_from_iso(value: str) -> Any:
-    from datetime import datetime
-
+def datetime_from_iso(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
@@ -264,8 +263,8 @@ def build_config(
     enable_enrichment: bool = True,
     enable_context_enrichment: bool = True,
     enable_brand_risk: bool = True,
-) -> tuple[AnalysisConfig, Any | None]:
-    policy = None
+) -> tuple[AnalysisConfig, BanditPolicy | ThompsonSamplingPolicy | None]:
+    policy: BanditPolicy | ThompsonSamplingPolicy | None = None
     score_mode = "fusion"
     static_weight = 0.6
     enable_policy = True
@@ -1012,16 +1011,6 @@ def evaluate_adversarial_suite(
         }
     return summary
 
-    fig, ax = plt.subplots(figsize=(10, 4))
-    sns.barplot(x=baselines, y=f1_means, ax=ax)
-    ax.set_title(f"F1 ({split})")
-    ax.set_ylabel("F1")
-    ax.set_xlabel("Baseline")
-    ax.tick_params(axis="x", rotation=45)
-    fig.tight_layout()
-    fig.savefig(str(output_dir / f"f1_{split}.png"))
-    plt.close(fig)
-
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Gojo benchmarking runner")
@@ -1489,7 +1478,7 @@ def main(argv: list[str] | None = None) -> int:
     # Generate experiment manifest for reproducibility
     run_id = f"gojo-benchmark-{uuid.uuid4().hex[:8]}"
     cli_args_dict = vars(args)
-    
+
     manifest = create_experiment_manifest(
         run_id=run_id,
         train_data_path=args.data,
@@ -1498,7 +1487,7 @@ def main(argv: list[str] | None = None) -> int:
         results_path=output_dir,
         runtime_seconds=time.time(),  # This should be start_time captured earlier
     )
-    
+
     manifest.to_json(output_dir / f"manifest_{run_id}.json")
     print(f"Experiment manifest: {output_dir / f'manifest_{run_id}.json'}")
 

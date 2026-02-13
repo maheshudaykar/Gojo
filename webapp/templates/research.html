@@ -43,7 +43,7 @@
               </div>
               <div class="gauge-bar" style="margin-bottom: 12px;">
                 <div class="gauge-container">
-                  <div class="gauge-fill" style="width: {{ metrics.auroc * 100 }}%"></div>
+                  <div class="gauge-fill" data-width="{{ (metrics.auroc * 100)|round(1) }}"></div>
                 </div>
               </div>
 
@@ -53,7 +53,7 @@
               </div>
               <div class="gauge-bar" style="margin-bottom: 12px;">
                 <div class="gauge-container">
-                  <div class="gauge-fill" style="width: {{ metrics.auprc * 100 }}%"></div>
+                  <div class="gauge-fill" data-width="{{ (metrics.auprc * 100)|round(1) }}"></div>
                 </div>
               </div>
 
@@ -63,7 +63,7 @@
               </div>
               <div class="gauge-bar">
                 <div class="gauge-container">
-                  <div class="gauge-fill" style="width: {{ metrics.f1 * 100 }}%"></div>
+                  <div class="gauge-fill" data-width="{{ (metrics.f1 * 100)|round(1) }}"></div>
                 </div>
               </div>
             </div>
@@ -86,7 +86,7 @@
               </div>
               <div class="gauge-bar" style="margin-bottom: 12px;">
                 <div class="gauge-container">
-                  <div class="gauge-fill" style="width: {{ metrics.auroc * 100 }}%"></div>
+                  <div class="gauge-fill" data-width="{{ (metrics.auroc * 100)|round(1) }}"></div>
                 </div>
               </div>
 
@@ -96,7 +96,7 @@
               </div>
               <div class="gauge-bar">
                 <div class="gauge-container">
-                  <div class="gauge-fill" style="width: {{ metrics.auprc * 100 }}%"></div>
+                  <div class="gauge-fill" data-width="{{ (metrics.auprc * 100)|round(1) }}"></div>
                 </div>
               </div>
             </div>
@@ -138,7 +138,7 @@
                   </div>
                   <div class="gauge-bar" style="margin-bottom: 8px;">
                     <div class="gauge-container">
-                      <div class="gauge-fill" style="width: {{ prob * 100 }}%"></div>
+                      <div class="gauge-fill" data-width="{{ (prob * 100)|round(1) }}"></div>
                     </div>
                   </div>
                 {% endfor %}
@@ -212,5 +212,16 @@
     </main>
 
     <script src="{{ url_for('static', filename='heartbeat.js') }}"></script>
+    <script>
+      // Apply gauge widths after render to avoid templating artifacts in inline CSS
+      document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.gauge-fill[data-width]').forEach((el) => {
+          const width = parseFloat(el.getAttribute('data-width') || '0');
+          if (!Number.isNaN(width)) {
+            el.style.width = `${width}%`;
+          }
+        });
+      });
+    </script>
   </body>
 </html>

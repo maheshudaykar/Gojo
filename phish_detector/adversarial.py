@@ -46,18 +46,18 @@ def _random_typo(host: str) -> str | None:
     idx = random.randint(1, len(host) - 2)
     choice = random.choice(["delete", "swap", "replace"])
     if choice == "delete":
-        return host[:idx] + host[idx + 1 :]
+        return host[:idx] + host[idx + 1:]
     if choice == "swap" and idx < len(host) - 1:
-        return host[:idx] + host[idx + 1] + host[idx] + host[idx + 2 :]
+        return host[:idx] + host[idx + 1] + host[idx] + host[idx + 2:]
     letters = "abcdefghijklmnopqrstuvwxyz"
-    return host[:idx] + random.choice(letters) + host[idx + 1 :]
+    return host[:idx] + random.choice(letters) + host[idx + 1:]
 
 
 def _homoglyph(host: str) -> str | None:
     for idx, ch in enumerate(host):
         repl = _CONFUSABLES.get(ch)
         if repl:
-            return host[:idx] + repl + host[idx + 1 :]
+            return host[:idx] + repl + host[idx + 1:]
     return None
 
 

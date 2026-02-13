@@ -101,11 +101,22 @@ def evaluate_offpolicy_entries(
         context_rewards = reward_mean.get(entry.context, {})
         q_hat_target = context_rewards.get(target_action, 0.0)
         q_hat_logged = context_rewards.get(entry.action, 0.0)
-        correction = (target_propensity / entry.propensity) * (reward - q_hat_logged) if _action_match(target_action, entry.action) else 0.0
+        correction = (
+            (target_propensity / entry.propensity) * (reward - q_hat_logged)
+            if _action_match(target_action, entry.action)
+            else 0.0
+        )
         dr_estimates.append(q_hat_target + correction)
 
     if not rewards:
-        return OffPolicyResult(ips=0.0, snips=0.0, dr=0.0, count=0, skipped=skipped, guardrail_violations=guardrail_violations)
+        return OffPolicyResult(
+            ips=0.0,
+            snips=0.0,
+            dr=0.0,
+            count=0,
+            skipped=skipped,
+            guardrail_violations=guardrail_violations,
+        )
 
     ips = sum(w * r for w, r in zip(ips_weights, rewards)) / max(len(rewards), 1)
     snips_denom = sum(ips_weights) or 1.0

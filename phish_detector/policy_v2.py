@@ -83,7 +83,7 @@ def _context_from_scores(ml_confidence: float, rule_score: int) -> str:
 class ThompsonSamplingPolicy:
     """
     Production-grade contextual bandit using Thompson Sampling.
-    
+
     Features:
     - Bayesian exploration with Beta distributions
     - UCB1 as fallback strategy
@@ -91,7 +91,7 @@ class ThompsonSamplingPolicy:
     - Automatic model evaluation
     - Reward shaping and temporal discounting
     """
-    
+
     def __init__(
         self,
         path: str,
@@ -114,8 +114,8 @@ class ThompsonSamplingPolicy:
     def _load(self) -> dict[str, Any]:
         """Load policy state from disk."""
         if self.path.exists():
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-            return data  # type: ignore[return-value]
+            data: dict[str, Any] = json.loads(self.path.read_text(encoding="utf-8"))
+            return data
         return {
             "version": "policy_v2_thompson",
             "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -150,7 +150,7 @@ class ThompsonSamplingPolicy:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         snapshot_path = history_dir / f"policy_v2_{timestamp}.json"
         snapshot_path.write_text(json.dumps(self.policy, indent=2), encoding="utf-8")
-        
+
         # Cleanup old snapshots
         snapshots = sorted(history_dir.glob("policy_v2_*.json"))
         if len(snapshots) > MAX_SNAPSHOTS:
@@ -181,15 +181,15 @@ class ThompsonSamplingPolicy:
         for action in self.actions:
             key = str(action)
             stats = context_data.get(key, {})
-            
+
             # Beta distribution parameters (assume reward in [0, 1])
             successes = float(stats.get("alpha", self.alpha_prior))
             failures = float(stats.get("beta", self.beta_prior))
-            
+
             # Sample from Beta(alpha, beta)
             sample = float(self._rng.beta(successes, failures))
             samples[action] = sample
-        
+
         best_action = float(max(samples, key=samples.get))  # type: ignore[arg-type]
         confidence = float(samples[best_action] / (sum(samples.values()) + 1e-10))
         return best_action, confidence
@@ -220,11 +220,11 @@ class ThompsonSamplingPolicy:
             stats = context_data.get(key, {"n": 0, "value": 0.0})
             n = max(int(stats.get("n", 1)), 1)
             value = float(stats.get("value", 0.0))
-            
+
             # UCB formula: value + sqrt(2 * log(total) / n)
             exploration_bonus = math.sqrt(2 * math.log(max(total_plays, 1)) / n)
             ucb_values[action] = float(value + exploration_bonus)
-        
+
         best_action = float(max(ucb_values, key=ucb_values.get))  # type: ignore[arg-type]
         confidence = float(ucb_values[best_action] / (sum(ucb_values.values()) + 1e-10))
         return best_action, confidence
@@ -237,17 +237,17 @@ class ThompsonSamplingPolicy:
         best_action = DEFAULT_WEIGHT
         best_value = float("-inf")
         total_value = 0.0
-        
+
         for action in self.actions:
             key = str(action)
             stats = context_data.get(key, {"n": 0, "value": 0.0})
             value = stats["value"]
             total_value += abs(value)
-            
+
             if stats["n"] > 0 and value > best_value:
                 best_value = value
                 best_action = action
-        
+
         confidence = abs(best_value) / (total_value + 1e-10)
         return best_action, confidence
 
@@ -260,26 +260,26 @@ class ThompsonSamplingPolicy:
     ) -> PolicyDecision:
         """
         Select action based on current context and strategy.
-        
+
         Args:
             ml_confidence: ML model confidence [0, 1]
             rule_score: Rule-based score
             strategy: Override default strategy
-            
+
         Returns:
             PolicyDecision with action, context, and metadata
         """
         context = context_override or _context_from_scores(ml_confidence, rule_score)
         context_data = self.policy.get("contexts", {}).get(context, {})
         strategy_used = strategy or self.strategy
-        
+
         # Calculate total plays for UCB
         total_plays = sum(
             int(cast(dict[str, Any], stats).get("n", 0))
             for stats in context_data.values()
             if isinstance(stats, dict)
         )
-        
+
         # Select action based on strategy
         if strategy_used == "thompson":
             action, confidence = self._thompson_sampling(context_data)
@@ -291,13 +291,13 @@ class ThompsonSamplingPolicy:
         else:  # greedy
             action, confidence = self._greedy(context_data)
             propensity = 1.0
-        
+
         # Update metrics
         self.metrics.context_distribution[context] = \
             self.metrics.context_distribution.get(context, 0) + 1
         self.metrics.action_distribution[str(action)] = \
             self.metrics.action_distribution.get(str(action), 0) + 1
-        
+
         return PolicyDecision(
             action=action,
             context=context,
@@ -320,7 +320,7 @@ class ThompsonSamplingPolicy:
     ) -> None:
         """
         Update policy with observed reward.
-        
+
         Args:
             context: Context bucket
             action: Action taken
@@ -328,14 +328,14 @@ class ThompsonSamplingPolicy:
             temporal_decay: Apply temporal discounting
         """
         self._snapshot()
-        
+
         # Normalize reward to [0, 1] for Beta distribution
         normalized_reward = (reward + 1) / 2
-        
+
         # Apply temporal decay if enabled
         if temporal_decay:
             normalized_reward *= TEMPORAL_DISCOUNT
-        
+
         # Update context-action statistics
         contexts = self.policy.setdefault("contexts", {})
         context_data = contexts.setdefault(context, {})
@@ -346,36 +346,36 @@ class ThompsonSamplingPolicy:
             "alpha": self.alpha_prior,
             "beta": self.beta_prior,
         })
-        
+
         # Update count and value (incremental mean)
         stats["n"] += 1
         stats["value"] += (reward - stats["value"]) / stats["n"]
-        
+
         # Update Beta distribution parameters for Thompson Sampling
         if normalized_reward > 0.5:
             stats["alpha"] += normalized_reward
         else:
             stats["beta"] += (1 - normalized_reward)
-        
+
         # Update global metrics
         self.metrics.total_updates += 1
         self.metrics.total_reward += reward
-        
+
         # Calculate regret (difference from optimal action)
         optimal_value = max(
             (float(cast(dict[str, Any], s).get("value", 0.0)) for s in context_data.values() if isinstance(s, dict)),
             default=0.0,
         )
         self.metrics.cumulative_regret += max(0.0, optimal_value - float(cast(dict[str, Any], stats).get("value", 0.0)))
-        
+
         # Update optimal action tracking
         if stats["value"] == optimal_value:
             best_actions = self.policy["global_stats"].setdefault("best_action_per_context", {})
             best_actions[context] = action
-        
+
         # Save updated policy
         self._save()
-        
+
         # Trigger evaluation if threshold reached
         if self.metrics.total_updates % RETRAINING_THRESHOLD == 0:
             self._evaluate()
@@ -383,7 +383,7 @@ class ThompsonSamplingPolicy:
     def _evaluate(self) -> dict[str, Any]:
         """
         Evaluate policy performance and generate metrics report.
-        
+
         Returns:
             Dictionary with evaluation metrics
         """
@@ -401,7 +401,7 @@ class ThompsonSamplingPolicy:
                 reverse=True,
             )[:10],
         }
-        
+
         # Calculate optimal action rate
         optimal_count = sum(
             1 for ctx in self.policy["global_stats"].get("best_action_per_context", {})
@@ -409,14 +409,14 @@ class ThompsonSamplingPolicy:
         )
         self.metrics.optimal_action_rate = optimal_count / max(len(self.metrics.context_distribution), 1)
         evaluation["optimal_action_rate"] = self.metrics.optimal_action_rate
-        
+
         # Save evaluation
         self.metrics.last_evaluation = evaluation["timestamp"]
         eval_dir = self.path.parent / "evaluations"
         eval_dir.mkdir(parents=True, exist_ok=True)
         eval_path = eval_dir / f"eval_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
         eval_path.write_text(json.dumps(evaluation, indent=2), encoding="utf-8")
-        
+
         return evaluation
 
     def get_metrics(self) -> dict[str, Any]:

@@ -27,17 +27,20 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_talisman import Talisman  # type: ignore[import-not-found]
 from flask_wtf import CSRFProtect  # type: ignore[import-not-found]
+from phish_detector.analyze import AnalysisConfig, analyze_url, load_ml_context
 
 APP_ROOT = Path(__file__).resolve().parent
 LOGS_DIR = Path("logs")
 LOGS_DIR.mkdir(exist_ok=True)
 LOG_FILE = LOGS_DIR / "webapp.log"
 
+
 def _build_log_handlers() -> list[logging.Handler]:
     handlers: list[logging.Handler] = [
         logging.StreamHandler(sys.stdout),
         logging.FileHandler(LOG_FILE, mode="a"),
     ]
+    formatter: logging.Formatter
     try:
         from pythonjsonlogger import json as jsonlogger
 
@@ -59,8 +62,6 @@ logging.basicConfig(
     handlers=_build_log_handlers(),
 )
 logger = logging.getLogger(__name__)
-
-from phish_detector.analyze import AnalysisConfig, analyze_url, load_ml_context
 
 # Try to use v2 policy, fallback to v1
 try:
@@ -131,16 +132,16 @@ def favicon() -> Any:
 def validate_url(url: str) -> tuple[bool, str]:
     """
     Validate and sanitize URL input.
-    
+
     Returns:
         (is_valid, error_message)
     """
     if not url:
         return False, "URL cannot be empty"
-    
+
     if len(url) > MAX_URL_LENGTH:
         return False, f"URL too long (max {MAX_URL_LENGTH} characters)"
-    
+
     # Basic URL parsing check
     try:
         parsed = urlparse(url)
@@ -148,39 +149,39 @@ def validate_url(url: str) -> tuple[bool, str]:
             return False, "Invalid URL format"
     except Exception as e:
         return False, f"URL parsing error: {str(e)}"
-    
+
     # Check for suspicious patterns
     if any(char in url for char in ['\n', '\r', '\x00']):
         return False, "URL contains invalid characters"
-    
+
     return True, ""
 
 
 def validate_csv_file(file: Any) -> tuple[bool, str]:
     """
     Validate uploaded CSV file.
-    
+
     Returns:
         (is_valid, error_message)
     """
     if not file or not file.filename:  # type: ignore[attr-defined]
         return False, "No file provided"
-    
+
     filename: str = str(file.filename).lower()  # type: ignore[attr-defined]
     if not any(filename.endswith(ext) for ext in ALLOWED_EXTENSIONS):
         return False, "Only CSV files are allowed"
-    
+
     # Check file size (already enforced by MAX_CONTENT_LENGTH, but double-check)
     file.seek(0, 2)  # type: ignore[attr-defined]  # Seek to end
     size: int = file.tell()  # type: ignore[attr-defined]
     file.seek(0)  # type: ignore[attr-defined]  # Reset to beginning
-    
+
     if size > MAX_CONTENT_LENGTH:
         return False, f"File too large (max {MAX_CONTENT_LENGTH // 1024 // 1024}MB)"
-    
+
     if size == 0:
         return False, "File is empty"
-    
+
     return True, ""
 
 
@@ -228,7 +229,7 @@ def before_request() -> None:
     with _heartbeat_lock:
         global _last_heartbeat
         _last_heartbeat = time.time()
-    
+
     # Log request
     logger.info(f"Request: {request.method} {request.path} from {request.remote_addr}")
 
@@ -282,7 +283,12 @@ def index() -> str:
                     config = _build_config(ml_mode)
                     ml_context = load_ml_context(config)
                     policy = Policy(config.policy_path) if ml_mode != "none" else None
-                    report, extra = analyze_url(url_value, config, ml_context=ml_context, policy=policy)  # type: ignore[arg-type]
+                    report, extra = analyze_url(
+                        url_value,
+                        config,
+                        ml_context=ml_context,
+                        policy=policy,
+                    )  # type: ignore[arg-type]
                     results = {"report": report, "extra": extra}
                     logger.info(f"Analysis complete: {report['summary']['label']}")
                 except (ValueError, RuntimeError, OSError) as e:
@@ -321,7 +327,12 @@ def index() -> str:
                         if not is_valid:
                             continue
 
-                        report, extra = analyze_url(url, config, ml_context=ml_context, policy=policy)  # type: ignore[arg-type]
+                        report, extra = analyze_url(
+                            url,
+                            config,
+                            ml_context=ml_context,
+                            policy=policy,
+                        )  # type: ignore[arg-type]
                         rows.append({
                             "url": url,
                             "score": report["summary"]["score"],
@@ -382,7 +393,7 @@ def download(filename: str) -> Any:
     if ".." in filename or "/" in filename or "\\" in filename:
         logger.warning(f"Suspicious download attempt: {filename}")
         return "Invalid filename", 400
-    
+
     logger.info(f"Download requested: {filename}")
     return send_from_directory(OUTPUT_DIR, filename, as_attachment=True)
 
@@ -402,7 +413,7 @@ def heartbeat() -> tuple[str, int]:
 def goodbye() -> tuple[str, int]:
     """Signal that client is closing (not refreshing)."""
     logger.info("Client goodbye signal received")
-    
+
     # Give a grace period before shutdown
     def delayed_shutdown() -> None:
         time.sleep(2)
@@ -410,7 +421,7 @@ def goodbye() -> tuple[str, int]:
             if time.time() - _last_heartbeat > 2:
                 logger.info("Initiating graceful shutdown after client disconnect")
                 _trigger_shutdown()
-    
+
     threading.Thread(target=delayed_shutdown, daemon=True).start()
     return "", 204
 
@@ -420,7 +431,7 @@ def health() -> Any:
     """Comprehensive health check endpoint."""
     ml_mode = request.args.get("ml_mode", "ensemble")
     status = _checkpoint_status(ml_mode)
-    
+
     # Add policy metrics if available
     try:
         if POLICY_VERSION == "v2":
@@ -428,10 +439,10 @@ def health() -> Any:
             status["policy_metrics"] = policy.get_metrics()  # type: ignore[attr-defined]
     except (OSError, RuntimeError, ValueError) as e:
         logger.warning(f"Could not load policy metrics: {e}")
-    
+
     status["uptime"] = time.time() - _app_start_time
     status["status"] = "healthy"
-    
+
     return jsonify(status)
 
 
@@ -452,7 +463,7 @@ def metrics() -> Any:
 @limiter.limit("10 per minute")
 def research() -> str:
     """Research  & evaluation dashboard for performance metrics."""
-    eval_data = {
+    eval_data: dict[str, Any] = {
         "baselines": {
             "ensemble": {"auroc": 0.94, "auprc": 0.92, "f1": 0.91},
             "lexical": {"auroc": 0.89, "auprc": 0.85, "f1": 0.84},
@@ -468,7 +479,7 @@ def research() -> str:
         "policy_metrics": {},
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
     }
-    
+
     # Load live policy metrics if available
     try:
         if POLICY_VERSION == "v2":
@@ -476,7 +487,7 @@ def research() -> str:
             eval_data["policy_metrics"] = policy.get_metrics()  # type: ignore[attr-defined]
     except (OSError, RuntimeError, ValueError) as e:
         logger.warning(f"Could not load policy metrics: {e}")
-    
+
     return render_template("research.html", eval_data=eval_data, policy_version=POLICY_VERSION)
 
 
@@ -485,7 +496,7 @@ def _trigger_shutdown() -> None:
     global _shutdown_flag
     _shutdown_flag = True
     logger.info("Shutdown flag set, server will terminate")
-    
+
     # Send SIGINT to self (graceful shutdown) or force-exit for WSGI workers.
     if __name__ == "__main__" and threading.current_thread() is threading.main_thread():
         raise KeyboardInterrupt()
@@ -498,13 +509,13 @@ def _trigger_shutdown() -> None:
 def _heartbeat_monitor() -> None:
     """Background thread to monitor heartbeat and trigger shutdown."""
     logger.info(f"Heartbeat monitor started (timeout: {HEARTBEAT_TIMEOUT}s)")
-    
+
     while not _shutdown_flag:
         time.sleep(5)
-        
+
         with _heartbeat_lock:
             elapsed = time.time() - _last_heartbeat
-        
+
         if elapsed > HEARTBEAT_TIMEOUT:
             logger.warning(f"No heartbeat for {elapsed:.1f}s, triggering shutdown")
             _trigger_shutdown()
@@ -519,7 +530,7 @@ if __name__ == "__main__":
     logger.info("Starting Flask application in production mode")
     logger.info(f"Policy version: {POLICY_VERSION}")
     logger.info(f"Max upload size: {MAX_CONTENT_LENGTH // 1024 // 1024}MB")
-    
+
     try:
         app.run(host="127.0.0.1", port=5000, debug=False, threaded=True)
     except KeyboardInterrupt:

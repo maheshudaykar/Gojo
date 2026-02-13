@@ -27,7 +27,7 @@ DEFAULT_TIMEOUT = 2.0
 DNS_RESOLVERS = ["1.1.1.1", "8.8.8.8", "9.9.9.9"]
 
 
-@dataclass(frozen=True)
+@dataclass
 class DomainEnrichment:
     registrable_domain: str
     age_days: int | None
@@ -60,7 +60,8 @@ def _rdap_domain(domain: str) -> dict[str, Any] | None:
         response = requests.get(RDAP_DOMAIN_URL.format(domain=domain), timeout=DEFAULT_TIMEOUT)
         if response.status_code != 200:
             return None
-        return json.loads(response.text)
+        data: dict[str, Any] = json.loads(response.text)
+        return data
     except (requests.RequestException, json.JSONDecodeError):
         return None
 
@@ -72,7 +73,8 @@ def _rdap_ip(ip: str) -> dict[str, Any] | None:
         response = requests.get(RDAP_IP_URL.format(ip=ip), timeout=DEFAULT_TIMEOUT)
         if response.status_code != 200:
             return None
-        return json.loads(response.text)
+        data: dict[str, Any] = json.loads(response.text)
+        return data
     except (requests.RequestException, json.JSONDecodeError):
         return None
 
