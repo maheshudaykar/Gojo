@@ -215,13 +215,24 @@ def export_ablation_study_table(summary: dict[str, Any], output_path: Path) -> N
     lines.append(r"Full model & - & - & - \\")  # Placeholder; extract from baseline
     
     for ablation_name, ablation_results in ablations.items():
-        if not ablation_results:
+        if not ablation_results or not isinstance(ablation_results, dict):
             continue
-        if not isinstance(ablation_results, dict):
-            continue
-        auroc = _fmt_metric(float(ablation_results.get("auroc", 0.0)))  # type: ignore[arg-type]
-        auprc = _fmt_metric(float(ablation_results.get("auprc", 0.0)))  # type: ignore[arg-type]
-        f1 = _fmt_metric(float(ablation_results.get("f1", 0.0)))  # type: ignore[arg-type]
+        
+        # Extract mean values from nested structure
+        auroc_mean = ablation_results.get("auroc", {})
+        auprc_mean = ablation_results.get("auprc", {})
+        f1_mean = ablation_results.get("f1", {})
+        
+        if isinstance(auroc_mean, dict):
+            auroc_mean = auroc_mean.get("mean", 0.0)
+        if isinstance(auprc_mean, dict):
+            auprc_mean = auprc_mean.get("mean", 0.0)
+        if isinstance(f1_mean, dict):
+            f1_mean = f1_mean.get("mean", 0.0)
+        
+        auroc = _fmt_metric(float(auroc_mean))  # type: ignore[arg-type]
+        auprc = _fmt_metric(float(auprc_mean))  # type: ignore[arg-type]
+        f1 = _fmt_metric(float(f1_mean))  # type: ignore[arg-type]
         
         lines.append(f"{ablation_name} & {auroc} & {auprc} & {f1} \\\\")
     
