@@ -1,23 +1,11 @@
 """Gojo phishing URL detector package."""
 
-from . import analyze
-from . import brand_risk
-from . import enrichment
-from . import intent
-from . import feedback
-from . import features
-from . import ml_char_ngram
-from . import ml_ensemble
-from . import ml_lexical
-from . import parsing
-from . import policy
-from . import policy_v2
-from . import report
-from . import rules
-from . import scoring
-from . import typosquat
+from __future__ import annotations
 
-__all__ = [
+import importlib
+from typing import Any
+
+_MODULES = {
 	"parsing",
 	"features",
 	"rules",
@@ -34,4 +22,16 @@ __all__ = [
 	"brand_risk",
 	"enrichment",
 	"intent",
-]
+}
+
+__all__ = sorted(_MODULES)
+
+
+def __getattr__(name: str) -> Any:
+	if name in _MODULES:
+		return importlib.import_module(f"{__name__}.{name}")
+	raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
+
+def __dir__() -> list[str]:
+	return sorted(list(globals().keys()) + list(_MODULES))

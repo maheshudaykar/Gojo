@@ -9,7 +9,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-import requests
+try:
+    import requests
+except ImportError:  # pragma: no cover
+    requests = None  # type: ignore[assignment]
 
 try:
     import dns.resolver
@@ -51,6 +54,8 @@ def _load_list(path: str) -> set[str]:
 
 
 def _rdap_domain(domain: str) -> dict[str, Any] | None:
+    if requests is None:
+        return None
     try:
         response = requests.get(RDAP_DOMAIN_URL.format(domain=domain), timeout=DEFAULT_TIMEOUT)
         if response.status_code != 200:
@@ -61,6 +66,8 @@ def _rdap_domain(domain: str) -> dict[str, Any] | None:
 
 
 def _rdap_ip(ip: str) -> dict[str, Any] | None:
+    if requests is None:
+        return None
     try:
         response = requests.get(RDAP_IP_URL.format(ip=ip), timeout=DEFAULT_TIMEOUT)
         if response.status_code != 200:
@@ -127,6 +134,8 @@ def _age_trust_score(age_days: int | None) -> float:
 
 
 def _google_safe_browsing(url: str) -> bool | None:
+    if requests is None:
+        return None
     api_key = os.getenv("GOJO_GSB_API_KEY")
     if not api_key:
         return None

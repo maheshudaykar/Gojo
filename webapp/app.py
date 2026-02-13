@@ -95,11 +95,14 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 csrf = CSRFProtect(app)
+limiter_storage = os.getenv("GOJO_LIMITER_STORAGE_URI", "memory://")
+if limiter_storage == "memory://" and os.getenv("GOJO_ENV") == "production":
+    logger.warning("Rate limiter uses in-memory storage in production. Set GOJO_LIMITER_STORAGE_URI.")
 limiter = Limiter(
     get_remote_address,
     app=app,
     default_limits=["200 per day", "50 per hour"],
-    storage_uri="memory://",
+    storage_uri=limiter_storage,
 )
 
 csp = {
@@ -267,14 +270,14 @@ def index() -> str:
         url_value = (request.form.get("url") or "").strip()
         file = request.files.get("file")
 
-        try:
-            if url_value:
-                # Validate URL
-                is_valid, error = validate_url(url_value)
-                if not is_valid:
-                    flash(f"Invalid URL: {error}")
-                    logger.warning(f"URL validation failed: {error}")
-                else:
+        if url_value:
+            # Validate URL
+            is_valid, error = validate_url(url_value)
+            if not is_valid:
+                flash(f"Invalid URL: {error}")
+                logger.warning(f"URL validation failed: {error}")
+            else:
+                try:
                     logger.info(f"Analyzing URL: {url_value[:100]}...")
                     config = _build_config(ml_mode)
                     ml_context = load_ml_context(config)
@@ -282,14 +285,18 @@ def index() -> str:
                     report, extra = analyze_url(url_value, config, ml_context=ml_context, policy=policy)  # type: ignore[arg-type]
                     results = {"report": report, "extra": extra}
                     logger.info(f"Analysis complete: {report['summary']['label']}")
-                    
-            elif file and file.filename:
-                # Validate CSV file
-                is_valid, error = validate_csv_file(file)
-                if not is_valid:
-                    flash(f"Invalid file: {error}")
-                    logger.warning(f"File validation failed: {error}")
-                else:
+                except (ValueError, RuntimeError, OSError) as e:
+                    logger.warning(f"Analysis failed: {str(e)}")
+                    flash(f"Analysis failed: {str(e)}")
+
+        elif file and file.filename:
+            # Validate CSV file
+            is_valid, error = validate_csv_file(file)
+            if not is_valid:
+                flash(f"Invalid file: {error}")
+                logger.warning(f"File validation failed: {error}")
+            else:
+                try:
                     logger.info(f"Processing bulk CSV: {file.filename}")
                     config = _build_config(ml_mode)
                     ml_context = load_ml_context(config)
@@ -298,22 +305,22 @@ def index() -> str:
                     stream = io.StringIO(file.stream.read().decode("utf-8", errors="ignore"))
                     reader = csv.DictReader(stream)
                     rows: list[dict[str, Any]] = []
-                    
+
                     for idx, row in enumerate(reader):
                         if idx >= 10000:  # Limit bulk processing
                             logger.warning("CSV processing limit reached (10000 rows)")
                             flash("CSV too large. Only first 10,000 rows processed.")
                             break
-                            
+
                         url = (row.get("url") or "").strip()
                         if not url:
                             continue
-                        
+
                         # Validate each URL
                         is_valid, _ = validate_url(url)
                         if not is_valid:
                             continue
-                        
+
                         report, extra = analyze_url(url, config, ml_context=ml_context, policy=policy)  # type: ignore[arg-type]
                         rows.append({
                             "url": url,
@@ -352,12 +359,11 @@ def index() -> str:
                     else:
                         flash("No valid URLs found in CSV.")
                         logger.warning("CSV contained no valid URLs")
-            else:
-                flash("Provide a URL or upload a CSV file.")
-                
-        except Exception as e:
-            logger.error(f"Analysis error: {str(e)}", exc_info=True)
-            flash(f"An error occurred during analysis: {str(e)}")
+                except (ValueError, RuntimeError, OSError) as e:
+                    logger.warning(f"Bulk analysis failed: {str(e)}")
+                    flash(f"Bulk analysis failed: {str(e)}")
+        else:
+            flash("Provide a URL or upload a CSV file.")
 
     return render_template(
         "index.html",
@@ -420,7 +426,7 @@ def health() -> Any:
         if POLICY_VERSION == "v2":
             policy = Policy("models/policy.json")
             status["policy_metrics"] = policy.get_metrics()  # type: ignore[attr-defined]
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError) as e:
         logger.warning(f"Could not load policy metrics: {e}")
     
     status["uptime"] = time.time() - _app_start_time
@@ -436,9 +442,8 @@ def metrics() -> Any:
         if POLICY_VERSION == "v2":
             policy = Policy("models/policy.json")
             return jsonify(policy.get_metrics())  # type: ignore[attr-defined]
-        else:
-            return jsonify({"error": "Metrics only available for policy v2"}), 404
-    except Exception as e:
+        return jsonify({"error": "Metrics only available for policy v2"}), 404
+    except (OSError, RuntimeError, ValueError) as e:
         logger.error(f"Metrics error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -454,8 +459,8 @@ def _trigger_shutdown() -> None:
         raise KeyboardInterrupt()
     try:
         os.kill(os.getpid(), signal.SIGINT)
-    except Exception:
-        os._exit(0)
+    except (OSError, RuntimeError) as exc:
+        logger.warning(f"Graceful shutdown signal failed: {exc}")
 
 
 def _heartbeat_monitor() -> None:

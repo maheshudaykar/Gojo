@@ -5,7 +5,6 @@ import logging
 from typing import Any, Protocol
 
 from phish_detector.brand_risk import BrandRiskConfig, compute_brand_typo_risk
-from phish_detector.enrichment import default_domain_enrichment, get_domain_enrichment
 from phish_detector.feedback import create_entry, record_pending, resolve_feedback
 from phish_detector.parsing import parse_url
 from phish_detector.policy import BanditPolicy, DEFAULT_WEIGHT
@@ -93,7 +92,14 @@ def analyze_url(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     parsed = parse_url(url)
     features, hits = evaluate_rules(parsed)
-    if config.enable_enrichment:
+    try:
+        from phish_detector.enrichment import default_domain_enrichment, get_domain_enrichment
+    except ImportError as exc:
+        logging.warning("Enrichment unavailable: %s", exc)
+        default_domain_enrichment = None  # type: ignore[assignment]
+        get_domain_enrichment = None  # type: ignore[assignment]
+
+    if config.enable_enrichment and get_domain_enrichment is not None:
         enrichment = get_domain_enrichment(
             parsed.host,
             parsed.original,
@@ -101,8 +107,20 @@ def analyze_url(
             enable_reputation=config.brand_risk.enable_reputation,
             enable_volatility=config.brand_risk.enable_volatility,
         )
-    else:
+    elif default_domain_enrichment is not None:
         enrichment = default_domain_enrichment(parsed.host)
+    else:
+        enrichment = type("DomainEnrichment", (), {
+            "registrable_domain": parsed.host,
+            "age_days": None,
+            "age_trust": 0.5,
+            "asn": None,
+            "asn_org": None,
+            "reputation_trust": 0.5,
+            "reputation_reasons": ["enrichment_unavailable"],
+            "volatility_score": 0.0,
+            "ip_addresses": [],
+        })()
     typo_match = detect_typosquatting(parsed)
     brand_risk = compute_brand_typo_risk(
         parsed,

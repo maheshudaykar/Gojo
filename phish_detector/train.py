@@ -18,6 +18,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default="both",
         help="Which model(s) to train",
     )
+    parser.add_argument(
+        "--benchmark-data",
+        help="Run benchmark after training using this dataset",
+    )
+    parser.add_argument("--benchmark-url-col", default="url", help="Benchmark URL column")
+    parser.add_argument("--benchmark-label-col", default="label", help="Benchmark label column")
+    parser.add_argument("--benchmark-time-col", default=None, help="Benchmark time column")
+    parser.add_argument("--benchmark-output", default="results", help="Benchmark output directory")
+    parser.add_argument("--benchmark-seeds", type=int, default=5, help="Benchmark seeds")
     return parser
 
 
@@ -39,6 +48,24 @@ def main() -> int:
             output_path=f"{args.out_dir}/char_model.joblib",
             metadata_path=f"{args.out_dir}/char_metadata.json",
         )
+    if args.benchmark_data:
+        from phish_detector.benchmark import main as bench_main
+
+        bench_args = [
+            "--data",
+            args.benchmark_data,
+            "--url-col",
+            args.benchmark_url_col,
+            "--label-col",
+            args.benchmark_label_col,
+            "--output-dir",
+            args.benchmark_output,
+            "--seeds",
+            str(args.benchmark_seeds),
+        ]
+        if args.benchmark_time_col:
+            bench_args.extend(["--time-col", args.benchmark_time_col])
+        bench_main(bench_args)
     return 0
 
 
