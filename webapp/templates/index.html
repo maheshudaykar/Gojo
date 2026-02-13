@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Gojo</title>
+    <title>Gojo - Phishing Detector</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -25,19 +25,26 @@
         </div>
       </header>
 
+      <!-- Result Verdict Panel -->
       {% if results %}
         <section class="panel verdict">
           <div class="verdict-header">
             <h2>Analysis Complete</h2>
-            <span class="verdict-badge {{ results.report.summary.label }}">
+            <span class="verdict-badge {{ results.report.summary.label }}" role="img" aria-label="Result: {{ 'Phishing Detected' if results.report.summary.label == 'red' else 'Suspicious' if results.report.summary.label == 'yellow' else 'Safe' }}">
               {{ 'PHISHING DETECTED' if results.report.summary.label == 'red' else 'SUSPICIOUS' if results.report.summary.label == 'yellow' else 'SAFE' }}
             </span>
           </div>
+
+          <!-- Verdict Visualization -->
           <div class="verdict-body">
-            <div class="verdict-score">
-              <span class="score-value">{{ results.report.summary.score }}</span>
-              <span class="score-label {{ results.report.summary.label }}">{{ results.report.summary.label }}</span>
+            <!-- Risk Gauge (circular) -->
+            <div class="risk-gauge">
+              <div class="risk-gauge-inner">
+                <div class="risk-gauge-value">{{ results.report.summary.score }}</div>
+              </div>
             </div>
+
+            <!-- Risk & Confidence Breakdown -->
             <div class="verdict-message">
               {% if results.report.summary.label == 'red' %}
                 <p class="verdict-text danger">⚠️ This URL is likely a phishing attempt. Do not enter any personal information or credentials.</p>
@@ -46,12 +53,83 @@
               {% else %}
                 <p class="verdict-text safe">✓ This URL appears legitimate based on current analysis.</p>
               {% endif %}
+
+              <!-- Confidence Gauges -->
+              <div style="margin-top: 16px;">
+                <div class="gauge-bar">
+                  <span class="gauge-label">Risk Score</span>
+                  <div class="gauge-container">
+                    <div class="gauge-fill" style="width: {{ results.report.summary.score }}%"></div>
+                  </div>
+                  <span class="gauge-value">{{ results.report.summary.score }}%</span>
+                </div>
+
+                {% if results.report.ml and results.report.ml.available %}
+                  <div class="gauge-bar">
+                    <span class="gauge-label">ML Confidence</span>
+                    <div class="gauge-container">
+                      <div class="gauge-fill" style="width: {{ (results.report.ml.confidence * 100)|round(0)|int }}%"></div>
+                    </div>
+                    <span class="gauge-value">{{ (results.report.ml.confidence * 100)|round(1) }}%</span>
+                  </div>
+                {% endif %}
+
+                {% if results.report.policy %}
+                  <div class="gauge-bar">
+                    <span class="gauge-label">Policy Weight</span>
+                    <div class="gauge-container">
+                      <div class="gauge-fill" style="width: {{ (results.report.policy.weight * 100)|round(0)|int }}%"></div>
+                    </div>
+                    <span class="gauge-value">{{ (results.report.policy.weight * 100)|round(0)|int }}%</span>
+                  </div>
+                {% endif %}
+              </div>
             </div>
+
+            <!-- Decision Badge: Auto vs Review Queue -->
+            {% if results.report.policy %}
+              <div class="decision-badge {% if results.report.policy.weight > 0.5 %}auto{% else %}review{% endif %}">
+                <span class="decision-icon">{{ '✓' if results.report.policy.weight > 0.5 else '⏳' }}</span>
+                <div>
+                  <strong>{{ 'Auto Decision' if results.report.policy.weight > 0.5 else 'Review Queue' }}</strong>
+                  <p style="font-size: 0.75rem; color: inherit; margin: 2px 0 0 0;">
+                    {% if results.report.policy.weight > 0.5 %}
+                      Confidence: {{ (results.report.policy.weight * 100)|round(0)|int }}%
+                    {% else %}
+                      Requires manual review or additional signals
+                    {% endif %}
+                  </p>
+                </div>
+              </div>
+            {% endif %}
           </div>
 
+          <!-- Explainability Panel: Top Signals -->
+          {% if results.extra.signals %}
+            <div class="explainability-panel">
+              <div class="explainability-title">
+                <span>🔍</span>
+                <span>Why This Result?</span>
+              </div>
+              <ol class="top-signals">
+                {% for hit in results.extra.signals[:3] %}
+                  <li class="top-signal">
+                    <div>
+                      <strong>{{ loop.index }}. {{ hit.name }}</strong>
+                      <p class="signal-contribution">{{ hit.details }}</p>
+                    </div>
+                    <span class="signal-rank">+{{ hit.weight }}</span>
+                  </li>
+                {% endfor %}
+              </ol>
+            </div>
+          {% endif %}
+
+          <!-- Detailed Analysis -->
           <details class="details-section" open>
-            <summary>Detailed Analysis</summary>
+            <summary>📊 Full Analysis Report</summary>
             <div class="grid">
+              <!-- URL Information -->
               <div>
                 <h3>URL Information</h3>
                 <p><strong>Original:</strong> <span class="mono">{{ results.report.parsed.original }}</span></p>
@@ -62,6 +140,7 @@
                 {% endif %}
               </div>
 
+              <!-- Risk Breakdown -->
               <div>
                 <h3>Risk Breakdown</h3>
                 <p><strong>Rule Score:</strong> {{ results.extra.rule_score }}</p>
@@ -74,19 +153,34 @@
                 {% endif %}
               </div>
 
+              <!-- Detection Signals as Severity Chips -->
               <div>
                 <h3>Detection Signals</h3>
                 {% if results.extra.signals %}
-                  <ul class="signal-list">
+                  <div class="chip-list">
                     {% for hit in results.extra.signals %}
-                      <li><strong>{{ hit.name }}</strong>: {{ hit.details }} <span class="weight">(+{{ hit.weight }})</span></li>
+                      {% if hit.weight >= 30 %}
+                        {% set severity = 'critical' %}
+                      {% elif hit.weight >= 15 %}
+                        {% set severity = 'warning' %}
+                      {% else %}
+                        {% set severity = 'info' %}
+                      {% endif %}
+                      <span class="chip {{ severity }}" title="{{ hit.details }}">
+                        <span class="chip-icon">
+                          {% if severity == 'critical' %}⚠️{% elif severity == 'warning' %}⚡{% else %}ℹ️{% endif %}
+                        </span>
+                        <span class="sr-only">{{ severity }}:</span>
+                        {{ hit.name }} (+{{ hit.weight }})
+                      </span>
                     {% endfor %}
-                  </ul>
+                  </div>
                 {% else %}
                   <p class="muted-text">No suspicious signals detected.</p>
                 {% endif %}
               </div>
 
+              <!-- ML Analysis -->
               <div>
                 <h3>ML Analysis</h3>
                 {% if results.report.ml and results.report.ml.available %}
@@ -100,18 +194,62 @@
                 {% endif %}
               </div>
             </div>
+
+            <!-- Policy Diagnostics -->
+            {% if results.report.policy %}
+              <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+                <h3>Policy Diagnostics</h3>
+                <div class="research-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                  <div class="research-card">
+                    <h4 style="margin: 0 0 12px 0;">Context</h4>
+                    <div class="metric-row">
+                      <span class="metric-label">Context</span>
+                      <span class="metric-value">{{ results.report.policy.context }}</span>
+                    </div>
+                  </div>
+                  <div class="research-card">
+                    <h4 style="margin: 0 0 12px 0;">Weights</h4>
+                    <div class="metric-row">
+                      <span class="metric-label">ML Weight</span>
+                      <span class="metric-value">{{ (results.report.policy.weight * 100)|round(0)|int }}%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            {% endif %}
           </details>
+
+          <!-- Action Bar -->
+          <div class="action-bar">
+            <button class="action-btn" onclick="copyJSON()" title="Copy analysis result in JSON format">
+              <span>📋</span>
+              <span>Copy JSON</span>
+            </button>
+            <button class="action-btn" onclick="downloadReport()" title="Download full report as text">
+              <span>⬇️</span>
+              <span>Download Report</span>
+            </button>
+            <a href="/" class="action-btn primary" title="Return to analyzer for another URL">
+              <span>🔄</span>
+              <span>Analyze Another</span>
+            </a>
+          </div>
         </section>
       {% endif %}
 
+      <!-- Bulk Analysis Result -->
       {% if bulk %}
         <section class="panel result">
-          <h2>Bulk Analysis Complete</h2>
-          <p>Processed {{ bulk.count }} URLs.</p>
-          <a class="download" href="{{ url_for('download', filename=bulk.filename) }}">Download CSV Results</a>
+          <h2>✓ Bulk Analysis Complete</h2>
+          <p>Processed <strong>{{ bulk.count }}</strong> URLs.</p>
+          <a class="action-btn primary" href="{{ url_for('download', filename=bulk.filename) }}" style="margin-top: 12px;">
+            <span>⬇️</span>
+            <span>Download CSV Results</span>
+          </a>
         </section>
       {% endif %}
 
+      <!-- Input Form with Tabs -->
       <section class="panel">
         <h2>Analyze URL</h2>
         {% with messages = get_flashed_messages() %}
@@ -121,21 +259,69 @@
             </div>
           {% endif %}
         {% endwith %}
+
+        <!-- Tab Navigation -->
+        <div class="tab-nav">
+          <button type="button" class="tab-button active" data-tab="single-tab" onclick="switchTab('single-tab')">
+            Single URL
+          </button>
+          <button type="button" class="tab-button" data-tab="bulk-tab" onclick="switchTab('bulk-tab')">
+            Bulk CSV
+          </button>
+        </div>
+
         <form method="post" enctype="multipart/form-data" class="form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-          <div class="field">
-            <label for="url">Single URL</label>
-            <input id="url" name="url" type="text" placeholder="https://example.com/login" />
+
+          <!-- Single URL Tab -->
+          <div id="single-tab" class="tab-content active">
+            <div class="field">
+              <label for="url">
+                URL to Analyze
+                <span class="sr-only">(required)</span>
+              </label>
+              <input
+                id="url"
+                name="url"
+                type="text"
+                placeholder="https://example.com/login"
+                aria-describedby="url-hint"
+              />
+              <div class="field-hint" id="url-hint">
+                <span>💡</span>
+                <span>Enter the complete URL including protocol (https://). Supports external URLs and local file:// paths.</span>
+              </div>
+            </div>
           </div>
 
-          <div class="field">
-            <label for="file">Bulk CSV (column name: url)</label>
-            <input id="file" name="file" type="file" accept=".csv" />
+          <!-- Bulk CSV Tab -->
+          <div id="bulk-tab" class="tab-content">
+            <div class="field">
+              <label for="file">
+                CSV File
+                <span class="sr-only">(optional)</span>
+              </label>
+              <input
+                id="file"
+                name="file"
+                type="file"
+                accept=".csv"
+                aria-describedby="file-hint"
+              />
+              <div class="field-hint" id="file-hint">
+                <span>📄</span>
+                <span>Upload a CSV file with a column named 'url'. Each row will be analyzed independently. For best results, limit to &lt;&nbsp;1000 URLs per file.</span>
+              </div>
+            </div>
           </div>
 
+          <!-- ML Mode Selection -->
           <div class="field">
-            <label for="ml_mode">ML Mode</label>
-            <select id="ml_mode" name="ml_mode">
+            <label for="ml_mode">
+              ML Mode
+              <span class="sr-only">(required)</span>
+            </label>
+            <select id="ml_mode" name="ml_mode" aria-describedby="ml-hint">
               <option value="ensemble" {% if ml_mode == 'ensemble' %}selected{% endif %}>
                 Ensemble — Combines lexical + char patterns for best accuracy
               </option>
@@ -149,14 +335,17 @@
                 Rules Only — Fast heuristic checks without ML
               </option>
             </select>
+            <div class="field-helper" id="ml-hint">Ensemble mode recommended for highest accuracy</div>
           </div>
 
-          <button type="submit">Analyze</button>
+          <!-- Submit Button with Loading State -->
+          <button type="submit" id="analyze-btn" aria-label="Submit for analysis">Analyze</button>
         </form>
       </section>
 
+      <!-- Policy Status Card -->
       <section class="panel policy-card">
-        <h2>Active Policy</h2>
+        <h2>🤖 Active Policy</h2>
         <p class="policy-desc">The RL agent dynamically blends ML and rule scores based on feedback.</p>
         <div class="status-grid">
           <div>
@@ -165,7 +354,7 @@
               {% if results and results.report.policy %}
                 {{ results.report.policy.context }}
               {% else %}
-                No analysis yet
+                <span class="muted-text">No analysis yet</span>
               {% endif %}
             </p>
           </div>
@@ -175,7 +364,7 @@
               {% if results and results.report.policy %}
                 {{ (results.report.policy.weight * 100)|round(0)|int }}%
               {% else %}
-                60% (default)
+                <span class="muted-text">60% (default)</span>
               {% endif %}
             </p>
           </div>
@@ -185,13 +374,96 @@
           </div>
           <div>
             <p class="status-label">Models Loaded</p>
-            <p class="status-chip {{ 'ok' if checkpoint.lexical_model and checkpoint.char_model else 'warn' }}">
+            <p class="status-chip {{ 'ok' if checkpoint.lexical_model and checkpoint.char_model else 'warn' }}" role="status" aria-label="Model status: {{ 'ready' if checkpoint.lexical_model and checkpoint.char_model else 'partial' }}">
               {{ 'ready' if checkpoint.lexical_model and checkpoint.char_model else 'partial' }}
             </p>
           </div>
         </div>
       </section>
     </main>
+
+    <!-- Scripts -->
     <script src="{{ url_for('static', filename='heartbeat.js') }}"></script>
+    <script>
+      // Tab switching
+      function switchTab(tabId) {
+        // Hide all tabs
+        document.querySelectorAll('.tab-content').forEach(tab => {
+          tab.classList.remove('active');
+        });
+        document.querySelectorAll('.tab-button').forEach(btn => {
+          btn.classList.remove('active');
+        });
+
+        // Show selected tab
+        document.getElementById(tabId).classList.add('active');
+        document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+      }
+
+      // Copy JSON result
+      function copyJSON() {
+        const verdict = document.querySelector('.verdict');
+        if (!verdict) return;
+
+        const result = {
+          url: '{{ results.report.parsed.original if results else '' }}',
+          verdict: '{{ results.report.summary.label if results else '' }}',
+          score: {{ results.report.summary.score if results else 0 }},
+          ml_confidence: {{ (results.report.ml.confidence * 100)|round(1) if results and results.report.ml else 0 }},
+          policy_weight: {{ (results.report.policy.weight * 100)|round(0)|int if results and results.report.policy else 0 }},
+          timestamp: new Date().toISOString()
+        };
+
+        navigator.clipboard.writeText(JSON.stringify(result, null, 2)).then(() => {
+          alert('Result copied to clipboard!');
+        }).catch(() => {
+          alert('Failed to copy result');
+        });
+      }
+
+      // Download report
+      function downloadReport() {
+        const verdict = document.querySelector('.verdict');
+        if (!verdict) return;
+
+        const report = `GOJO ANALYSIS REPORT
+Generated: ${new Date().toISOString()}
+
+URL: {{ results.report.parsed.original if results else '' }}
+Verdict: {{ results.report.summary.label if results else '' }}
+Risk Score: {{ results.report.summary.score if results else 0 }}%
+
+CONFIDENCE METRICS
+ML Confidence: {{ (results.report.ml.confidence * 100)|round(1) if results and results.report.ml else 'N/A' }}%
+Policy Weight: {{ (results.report.policy.weight * 100)|round(0)|int if results and results.report.policy else 'N/A' }}%
+
+DETECTION SIGNALS
+{% if results and results.extra.signals %}
+{% for hit in results.extra.signals %}
+- {{ hit.name }}: {{ hit.details }} (+{{ hit.weight }})
+{% endfor %}
+{% else %}
+No signals detected
+{% endif %}
+`;
+
+        const blob = new Blob([report], { type: 'text/plain' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `gojo-report-${new Date().toISOString().split('T')[0]}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+
+      // Loading state on form submit
+      document.querySelector('form').addEventListener('submit', function() {
+        const btn = document.getElementById('analyze-btn');
+        btn.disabled = true;
+        btn.classList.add('btn-loading');
+      });
+    </script>
   </body>
 </html>

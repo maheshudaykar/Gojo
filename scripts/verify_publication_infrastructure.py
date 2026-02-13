@@ -8,9 +8,10 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 
-def check_files_exist():
+def check_files_exist() -> bool:
     """Verify all new files exist."""
     required_files = [
         "phish_detector/experiment_manifest.py",
@@ -23,7 +24,7 @@ def check_files_exist():
     ]
     
     print("📋 Checking required files...")
-    missing = []
+    missing: list[str] = []
     for f in required_files:
         path = Path(f)
         exists = path.exists()
@@ -183,13 +184,13 @@ def check_git_status():
         return False
 
 
-def main():
+def main() -> int:
     """Run all verification checks."""
     print("=" * 60)
     print("GOJO PUBLICATION INFRASTRUCTURE VERIFICATION")
     print("=" * 60 + "\n")
     
-    checks = [
+    checks: list[tuple[str, Any]] = [
         ("Files Exist", check_files_exist),
         ("Manifest System", check_manifest_system),
         ("Export System", check_export_system),
@@ -198,7 +199,7 @@ def main():
         ("Git Status", check_git_status),
     ]
     
-    results = []
+    results: list[tuple[str, bool]] = []
     for name, check_fn in checks:
         try:
             result = check_fn()

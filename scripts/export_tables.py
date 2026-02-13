@@ -219,16 +219,16 @@ def export_ablation_study_table(summary: dict[str, Any], output_path: Path) -> N
             continue
         
         # Extract mean values from nested structure
-        auroc_mean = ablation_results.get("auroc", {})
-        auprc_mean = ablation_results.get("auprc", {})
-        f1_mean = ablation_results.get("f1", {})
+        auroc_mean = ablation_results.get("auroc", {})  # type: ignore[assignment]
+        auprc_mean = ablation_results.get("auprc", {})  # type: ignore[assignment]
+        f1_mean = ablation_results.get("f1", {})  # type: ignore[assignment]
         
         if isinstance(auroc_mean, dict):
-            auroc_mean = auroc_mean.get("mean", 0.0)
+            auroc_mean = auroc_mean.get("mean", 0.0)  # type: ignore[union-attr]
         if isinstance(auprc_mean, dict):
-            auprc_mean = auprc_mean.get("mean", 0.0)
+            auprc_mean = auprc_mean.get("mean", 0.0)  # type: ignore[union-attr]
         if isinstance(f1_mean, dict):
-            f1_mean = f1_mean.get("mean", 0.0)
+            f1_mean = f1_mean.get("mean", 0.0)  # type: ignore[union-attr]
         
         auroc = _fmt_metric(float(auroc_mean))  # type: ignore[arg-type]
         auprc = _fmt_metric(float(auprc_mean))  # type: ignore[arg-type]

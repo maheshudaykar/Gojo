@@ -8,18 +8,17 @@
   </head>
   <body>
     <main class="page">
-      <header class="hero">
-        <div>
-          <h1>Error</h1>
-          <p class="subtitle">Something went wrong</p>
+      <div class="error-page">
+        <div class="error-content">
+          <div class="error-code">⚠️</div>
+          <h1 class="error-title">Error Occurred</h1>
+          <p class="error-message">{{ error }}</p>
+          <a href="/" class="error-back">
+            <span>←</span>
+            <span>Back to Analyzer</span>
+          </a>
         </div>
-      </header>
-      <section class="panel">
-        <div class="alert">
-          {{ error }}
-        </div>
-        <a href="/" style="color: var(--accent); font-weight: 600;">← Back to Home</a>
-      </section>
+      </div>
     </main>
   </body>
 </html>
