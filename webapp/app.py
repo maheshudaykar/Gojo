@@ -190,7 +190,7 @@ def _build_config(ml_mode: str) -> AnalysisConfig:
     # Check for advanced features enablement via environment variables
     enable_content = os.getenv('GOJO_ENABLE_CONTENT_ANALYSIS', 'true').lower() == 'true'
     enable_advanced = os.getenv('GOJO_ENABLE_ADVANCED', 'true').lower() == 'true'
-    
+
     return AnalysisConfig(
         ml_mode=ml_mode,
         lexical_model="models/lexical_model.joblib",

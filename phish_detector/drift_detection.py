@@ -51,24 +51,24 @@ class AttackPattern:
 
 class DriftDetector:
     """Monitors feature distributions and detects concept drift."""
-    
+
     def __init__(self, config: AdaptiveConfig):
         self.config = config
         self.baseline_distributions: Dict[str, Dict[str, float]] = {}
         self.current_window: List[Dict[str, Any]] = []
         self.drift_signals: List[DriftSignal] = []
-        
+
     def update_baseline(self, features: Dict[str, float]) -> None:
         """Update baseline feature distributions."""
         for feature, value in features.items():
             # Skip non-numeric features (TLD strings, URLs, etc.)
             if not isinstance(value, (int, float, bool)):
                 continue
-            
+
             # Convert bool to int for numeric calculations
             if isinstance(value, bool):
                 value = int(value)
-            
+
             if feature not in self.baseline_distributions:
                 self.baseline_distributions[feature] = {
                     'sum': 0.0,
@@ -77,56 +77,56 @@ class DriftDetector:
                     'mean': 0.0,
                     'variance': 0.0
                 }
-            
+
             stats = self.baseline_distributions[feature]
             stats['count'] += 1
             stats['sum'] += value
             stats['sum_squared'] += value ** 2
             stats['mean'] = stats['sum'] / stats['count']
-            
+
             if stats['count'] > 1:
                 stats['variance'] = (
                     stats['sum_squared'] / stats['count'] - stats['mean'] ** 2
                 )
-    
+
     def detect_drift(self, features: Dict[str, float]) -> List[DriftSignal]:
         """
         Detect drift using Population Stability Index (PSI).
-        
+
         PSI = Σ (actual% - expected%) × ln(actual% / expected%)
         PSI < 0.1: No significant change
         0.1 ≤ PSI < 0.2: Moderate change
         PSI ≥ 0.2: Significant drift detected
         """
         self.current_window.append(features)
-        
+
         if len(self.current_window) < self.config.drift_detection_window:
             return []
-        
+
         signals = []
-        
+
         for feature, baseline in self.baseline_distributions.items():
             if baseline['count'] < 10:  # Need minimum baseline
                 continue
-            
+
             # Calculate current window stats (filter numeric values)
             current_values = [
                 (int(w[feature]) if isinstance(w.get(feature), bool) else w.get(feature, 0.0))
                 for w in self.current_window
                 if isinstance(w.get(feature), (int, float, bool))
             ]
-            
+
             if not current_values:
                 continue
-                
+
             current_mean = sum(current_values) / len(current_values)
-            
+
             # Calculate PSI (simplified version)
             if baseline['mean'] > 0:
                 psi = abs((current_mean - baseline['mean']) / baseline['mean'])
             else:
                 psi = abs(current_mean)
-            
+
             if psi >= self.config.psi_threshold:
                 signal = DriftSignal(
                     metric=feature,
@@ -138,22 +138,22 @@ class DriftDetector:
                 )
                 signals.append(signal)
                 self.drift_signals.append(signal)
-        
+
         # Reset window
         self.current_window = []
-        
+
         return signals
 
 
 class AttackPatternTracker:
     """Tracks and learns from emerging attack patterns."""
-    
+
     def __init__(self, storage_path: Path, config: AdaptiveConfig):
         self.storage_path = storage_path
         self.config = config
         self.patterns: Dict[str, AttackPattern] = {}
         self.load_patterns()
-    
+
     def load_patterns(self) -> None:
         """Load attack patterns from disk."""
         if self.storage_path.exists():
@@ -165,7 +165,7 @@ class AttackPatternTracker:
                         self.patterns[pattern.pattern_id] = pattern
             except (json.JSONDecodeError, IOError):
                 pass
-    
+
     def save_patterns(self) -> None:
         """Persist attack patterns to disk."""
         data = {
@@ -184,11 +184,11 @@ class AttackPatternTracker:
             ],
             'last_updated': datetime.now(timezone.utc).isoformat()
         }
-        
+
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.storage_path, 'w') as f:
             json.dump(data, f, indent=2)
-    
+
     def record_attack(
         self,
         url: str,
@@ -199,15 +199,15 @@ class AttackPatternTracker:
     ) -> str:
         """
         Record a detected phishing attack pattern.
-        
+
         Returns:
             Pattern ID
         """
         # Generate pattern signature
         pattern_id = self._generate_pattern_id(features, tld, brand, technique)
-        
+
         now = datetime.now(timezone.utc).isoformat()
-        
+
         if pattern_id in self.patterns:
             # Update existing pattern
             pattern = self.patterns[pattern_id]
@@ -226,7 +226,7 @@ class AttackPatternTracker:
                 technique=technique
             )
             self.patterns[pattern_id] = pattern
-        
+
         # Prune old patterns (keep most recent)
         if len(self.patterns) > self.config.attack_pattern_memory:
             sorted_patterns = sorted(
@@ -235,10 +235,10 @@ class AttackPatternTracker:
                 reverse=True
             )
             self.patterns = dict(sorted_patterns[:self.config.attack_pattern_memory])
-        
+
         self.save_patterns()
         return pattern_id
-    
+
     def _generate_pattern_id(
         self,
         features: Dict[str, Any],
@@ -248,14 +248,14 @@ class AttackPatternTracker:
     ) -> str:
         """Generate unique pattern identifier."""
         components = []
-        
+
         if technique:
             components.append(technique)
         if tld:
             components.append(f"tld_{tld}")
         if brand:
             components.append(f"brand_{brand}")
-        
+
         # Add feature fingerprint
         feature_sig = "_".join([
             f"{k}:{int(v) if isinstance(v, (int, float)) else v}"
@@ -263,19 +263,19 @@ class AttackPatternTracker:
             if k in ['is_suspicious_tld', 'has_homoglyph', 'num_subdomains']
         ])
         components.append(feature_sig)
-        
+
         return "_".join(components)[:128]
-    
+
     def get_emerging_patterns(self, min_frequency: int = 5, days: int = 7) -> List[AttackPattern]:
         """Get recently emerging attack patterns."""
         from datetime import timedelta
-        
+
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-        
+
         emerging = [
             pattern for pattern in self.patterns.values()
             if pattern.frequency >= min_frequency
             and datetime.fromisoformat(pattern.first_seen) >= cutoff
         ]
-        
+
         return sorted(emerging, key=lambda x: x.frequency, reverse=True)

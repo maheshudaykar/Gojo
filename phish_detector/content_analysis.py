@@ -36,39 +36,39 @@ def analyze_html_content(
 ) -> ContentAnalysis:
     """
     Analyze HTML page content for phishing indicators.
-    
+
     SECURITY: This function only PARSES HTML, it does NOT execute scripts.
     All analysis is done via regex patterns - no JavaScript execution.
-    
+
     Args:
         html: Raw HTML content of the page (sanitized, not executed)
         url: The originating URL
         claimed_brand: Brand the page claims to represent
-        
+
     Returns:
         ContentAnalysis with detected patterns and risk score
     """
     signals: list[str] = []
     risk_score = 0
-    
+
     # Pattern 1: Password/credential input fields
     has_password_field = bool(re.search(
         r'<input[^>]*type\s*=\s*["\']password["\']',
         html,
         re.IGNORECASE
     ))
-    
+
     # Pattern 2: Login/credential harvesting form
     has_credential_form = bool(re.search(
         r'<form[^>]*(login|signin|password|credential)',
         html,
         re.IGNORECASE
     )) and has_password_field
-    
+
     if has_credential_form:
         signals.append("credential_harvesting_form")
         risk_score += 30
-    
+
     # Pattern 3: Form action to external domain
     external_form_action = False
     form_actions = re.findall(
@@ -82,7 +82,7 @@ def analyze_html_content(
             signals.append(f"external_form_action:{action[:50]}")
             risk_score += 40
             break
-    
+
     # Pattern 4: Suspicious JavaScript patterns
     suspicious_js_patterns = [
         r'document\.write\s*\(',  # Dynamic content injection
@@ -92,16 +92,16 @@ def analyze_html_content(
         r'window\.location\s*=',  # Forced redirects
         r'addEventListener\s*\(\s*["\']keypress["\']',  # Keylogging
     ]
-    
+
     suspicious_js_count = sum(
         1 for pattern in suspicious_js_patterns
         if re.search(pattern, html, re.IGNORECASE)
     )
-    
+
     if suspicious_js_count >= 3:
         signals.append(f"suspicious_js_patterns:{suspicious_js_count}")
         risk_score += 25
-    
+
     # Pattern 5: Brand visual cloning (logo/design theft)
     brand_visual_match = None
     if claimed_brand:
@@ -111,13 +111,13 @@ def analyze_html_content(
             if has_credential_form:
                 signals.append(f"brand_impersonation:{claimed_brand}")
                 risk_score += 35
-    
+
     # Pattern 6: SSL certificate mismatch (placeholder - requires cert inspection)
     ssl_cert_mismatch = False  # Would require actual SSL cert validation
-    
+
     # Determine if content is suspicious enough to warn user
     is_safe = risk_score < 50  # Threshold for dangerous content
-    
+
     return ContentAnalysis(
         has_password_field=has_password_field,
         has_credential_form=has_credential_form,
@@ -138,32 +138,31 @@ def fetch_and_analyze(
 ) -> Optional[ContentAnalysis]:
     """
     Fetch URL and analyze content (requires requests library).
-    
+
     SECURITY NOTICE:
     - Only fetches HTML/text content, does NOT execute JavaScript
     - Uses safe regex-based parsing, NO code evaluation
     - Sandboxed analysis - malicious scripts cannot run
     - Timeouts prevent hanging on unresponsive sites
-    
+
     Args:
         url: URL to fetch and analyze
         timeout: Request timeout in seconds
         claimed_brand: Brand the page claims to represent
-        
+
     Returns:
         ContentAnalysis if successful, None on error
     """
     try:
         import requests
 
-        
         # Warn about fetching potentially malicious content
         warnings.warn(
             f"Fetching content from {url} - analysis is sandboxed (no script execution)",
             UserWarning,
             stacklevel=2
         )
-        
+
         # Fetch with safety measures
         response = requests.get(
             url,
@@ -172,7 +171,7 @@ def fetch_and_analyze(
             headers={'User-Agent': 'Mozilla/5.0 (Gojo Phishing Detector)'},
             verify=True  # Verify SSL certificates
         )
-        
+
         if response.status_code == 200:
             # Only analyze text/html content
             content_type = response.headers.get('content-type', '')
@@ -180,7 +179,7 @@ def fetch_and_analyze(
                 # Safe: only passing HTML string for regex analysis
                 # NO script execution, NO eval(), NO rendering
                 return analyze_html_content(response.text, url, claimed_brand)
-        
+
     except ImportError:
         warnings.warn("requests library not installed, content analysis disabled", UserWarning)
         return None
@@ -188,5 +187,5 @@ def fetch_and_analyze(
         # Network/connection error or any other error - silently fail
         warnings.warn(f"Content analysis error for {url}: {str(e)}", UserWarning)
         return None
-    
+
     return None

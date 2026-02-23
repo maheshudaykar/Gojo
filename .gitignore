@@ -98,6 +98,106 @@ _LOCAL_DOCS/
 
 # Dataset (may be large)
 data/DatasetWebFraudDetection/
+# Python
+*.py[cod]
+*$py.class
+__pycache__/
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.virtualenv/
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Models and data files
+models/
+*.pkl
+*.joblib
+*.h5
+*.model
+*.bin
+
+# Logs
+logs/
+*.log
+log.txt
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project specific
+outputs/
+results/
+checkpoints/
+temp/
+tmp/
+_LOCAL_DOCS/
+
+# Environment variables
+.env
+.env.local
+
+# Dataset (may be large)
+data/DatasetWebFraudDetection/
 data/*.csv
 
 # Backup files
@@ -108,3 +208,21 @@ data/*.csv
 gojo_dataset*.csv
 gojo_temp/
 test_pure.py
+
+# Research paper validation scripts (never push to GitHub)
+paper_validation.py
+paper_stats_test.py
+generate_plots.py
+verify_accuracy.py
+gojo_dataset_builder.py
+fix_lints.py
+
+# Debug and one-off scripts (not part of publishable codebase)
+debug_url.py
+test_integration.py
+demo_practical.py
+
+# Research paper document
+research_paper.md
+implementation_plan.md
+walkthrough.md

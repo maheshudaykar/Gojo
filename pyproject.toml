@@ -143,3 +143,21 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
 ]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+include = ["phish_detector", "webapp", "tests"]
+exclude = [".venv", "**/__pycache__", "build", "dist"]
+# Silence noisy warnings that don't affect correctness
+reportMissingModuleSource = false
+reportAttributeAccessIssue = "warning"
+reportPrivateUsage = "none"
+reportMissingTypeArgument = "none"
+reportUnknownVariableType = "none"
+reportUnknownMemberType = "none"
+reportUnknownParameterType = "none"
+reportUnknownArgumentType = "none"
+reportReturnType = "warning"

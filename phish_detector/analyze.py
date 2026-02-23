@@ -309,22 +309,22 @@ def analyze_url(
     # Advanced detection: content analysis and adaptive learning
     content_analysis_result: dict[str, Any] | None = None
     advanced_enhancements: dict[str, Any] | None = None
-    
+
     if config.enable_content_analysis or config.enable_advanced_detection:
         try:
             from phish_detector.advanced_detection import AdvancedDetector
-            
+
             advanced_detector = AdvancedDetector(config.models_dir)
-            
+
             # Determine if we should perform content analysis
             # Only fetch content for uncertain verdicts (YELLOW zone) to save resources
             perform_content = config.enable_content_analysis and (
                 25 < final_score.score < 65  # Uncertain zone
             )
-            
+
             # Get brand target if we detected typosquatting
             brand_target = brand_risk.matched_brand if typo_match and hasattr(brand_risk, 'matched_brand') else None
-            
+
             # Apply advanced detection
             enhanced = advanced_detector.analyze_url_enhanced(
                 url=parsed.original,
@@ -335,7 +335,7 @@ def analyze_url(
                 brand_target=brand_target,
                 is_phishing=config.label == 'phish' if config.label else None
             )
-            
+
             # Override final score with enhanced score
             if enhanced.get('final_score') is not None:
                 score_boost = enhanced['final_score'] - final_score.score
@@ -345,11 +345,11 @@ def analyze_url(
                         label=label_for_score(min(100, enhanced['final_score'])),
                         hits=hits,
                     )
-            
+
             # Store enhancement details
             advanced_enhancements = enhanced.get('enhancements', {})
             content_analysis_result = advanced_enhancements.get('content')
-            
+
         except ImportError as e:
             logging.warning(f"Advanced detection unavailable: {e}")
         except Exception as e:

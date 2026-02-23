@@ -3,7 +3,7 @@ Integration layer for advanced phishing detection features.
 
 Combines:
 - Content-based HTML analysis
-- Drift detection and adaptive learning  
+- Drift detection and adaptive learning
 - Dynamic TLD learning
 - Attack pattern tracking
 """
@@ -23,7 +23,7 @@ from phish_detector.dynamic_tld_learning import DynamicTLDLearner
 class AdvancedDetector:
     """
     Enhanced detector with content analysis and adaptive learning.
-    
+
     Usage:
         detector = AdvancedDetector("models")
         result = detector.analyze_url_enhanced(
@@ -32,11 +32,11 @@ class AdvancedDetector:
             features={'tld': 'ml', 'num_subdomains': 2}
         )
     """
-    
+
     def __init__(self, model_dir: Path | str):
         self.model_dir = Path(model_dir)
         self.model_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Initialize components
         self.config = AdaptiveConfig()
         self.drift_detector = DriftDetector(self.config)
@@ -47,12 +47,12 @@ class AdvancedDetector:
         self.tld_learner = DynamicTLDLearner(
             self.model_dir / "dynamic_tlds.json"
         )
-        
+
         # Load baseline from first N URLs
         self._baseline_initialized = False
         self._baseline_count = 0
         self._baseline_target = 500
-    
+
     def analyze_url_enhanced(
         self,
         url: str,
@@ -65,7 +65,7 @@ class AdvancedDetector:
     ) -> Dict[str, Any]:
         """
         Enhanced URL analysis with all advanced features.
-        
+
         Args:
             url: URL to analyze
             features: Extracted features from URL parsing
@@ -74,7 +74,7 @@ class AdvancedDetector:
             perform_content_analysis: Whether to fetch and analyze HTML
             is_phishing: Ground truth label (if known, for learning)
             brand_target: Brand being impersonated (if detected)
-            
+
         Returns:
             Enhanced analysis results
         """
@@ -85,7 +85,7 @@ class AdvancedDetector:
             'rule_score': rule_score,
             'enhancements': {}
         }
-        
+
         # 1. Content-based analysis (if enabled)
         content_analysis: Optional[ContentAnalysis] = None
         if perform_content_analysis:
@@ -99,12 +99,12 @@ class AdvancedDetector:
                     'content_risk_score': content_analysis.risk_score,
                     'signals': content_analysis.signals
                 }
-                
+
                 # Boost score if content analysis detects high risk
                 if content_analysis.risk_score >= 60:
                     result['base_score'] = min(100, result['base_score'] + 20)
                     result['enhancements']['content']['score_boost'] = 20
-        
+
         # 2. Drift detection
         if self._baseline_initialized:
             drift_signals = self.drift_detector.detect_drift(features)
@@ -124,26 +124,26 @@ class AdvancedDetector:
             self._baseline_count += 1
             if self._baseline_count >= self._baseline_target:
                 self._baseline_initialized = True
-        
+
         # 3. Dynamic TLD learning
         tld = features.get('tld', '')
         if tld and is_phishing is not None:
             # Region detection (simplified - could use GeoIP)
             region = self._detect_region(tld)
             self.tld_learner.update(tld, is_phishing, region)
-        
+
         if tld:
             is_tld_suspicious = self.tld_learner.is_suspicious(tld)
             result['enhancements']['dynamic_tld'] = {
                 'tld': tld,
                 'is_learned_suspicious': is_tld_suspicious
             }
-            
+
             # Boost score if dynamic learning flags TLD
             if is_tld_suspicious and not features.get('is_suspicious_tld', False):
                 result['base_score'] = min(100, result['base_score'] + 15)
                 result['enhancements']['dynamic_tld']['score_boost'] = 15
-        
+
         # 4. Attack pattern tracking
         if is_phishing or (result['base_score'] >= 60):
             technique = self._identify_technique(features)
@@ -158,18 +158,18 @@ class AdvancedDetector:
                 'pattern_id': pattern_id,
                 'technique': technique
             }
-        
+
         # 5. Final verdict with enhancements
         final_score = result['base_score']
         result['final_score'] = final_score
         result['verdict'] = 'red' if final_score > 60 else ('yellow' if final_score > 25 else 'green')
-        
+
         return result
-    
+
     def _detect_region(self, tld: str) -> Optional[str]:
         """
         Detect geographic region from TLD (simplified).
-        
+
         In production, use MaxMind GeoIP or similar.
         """
         regional_tlds = {
@@ -179,13 +179,13 @@ class AdvancedDetector:
             'latin_america': {'br', 'mx', 'ar', 'cl', 'co', 'pe'},
             'middle_east': {'sa', 'ae', 'il', 'tr', 'eg'},
         }
-        
+
         for region, tlds in regional_tlds.items():
             if tld in tlds:
                 return region
-        
+
         return None
-    
+
     def _identify_technique(self, features: Dict[str, Any]) -> Optional[str]:
         """Identify phishing technique from features."""
         if features.get('has_homoglyph'):
@@ -199,11 +199,11 @@ class AdvancedDetector:
         if features.get('has_ip'):
             return 'ip_based_hosting'
         return 'unknown'
-    
+
     def get_adaptive_insights(self) -> Dict[str, Any]:
         """
         Generate insights for model adaptation and retraining.
-        
+
         Returns:
             Dictionary with drift signals, emerging patterns, and recommendations
         """
@@ -211,11 +211,11 @@ class AdvancedDetector:
             min_frequency=5,
             days=7
         )
-        
+
         tld_report = self.tld_learner.generate_report()
-        
+
         recommendations: list[dict[str, Any]] = []
-        
+
         # Recommend retraining if significant drift
         if len(self.drift_detector.drift_signals) >= self.config.retraining_trigger_threshold:
             recommendations.append({
@@ -223,7 +223,7 @@ class AdvancedDetector:
                 'reason': f'{len(self.drift_detector.drift_signals)} drift signals detected',
                 'priority': 'high'
             })
-        
+
         # Recommend updating TLD list
         if len(tld_report['emerging_threats']) > 0:
             recommendations.append({
@@ -232,7 +232,7 @@ class AdvancedDetector:
                 'priority': 'medium',
                 'new_tlds': [t['tld'] for t in tld_report['emerging_threats']]
             })
-        
+
         return {
             'drift_signals': len(self.drift_detector.drift_signals),
             'emerging_attack_patterns': [
