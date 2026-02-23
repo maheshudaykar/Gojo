@@ -103,3 +103,8 @@ data/*.csv
 # Backup files
 *.bak
 *.backup
+
+# Gojo Dataset Artifacts
+gojo_dataset*.csv
+gojo_temp/
+test_pure.py

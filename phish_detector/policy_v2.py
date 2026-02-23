@@ -280,7 +280,7 @@ class ThompsonSamplingPolicy:
             if isinstance(stats, dict)
         )
 
-        # Protect cold-start contexts: if we have almost no data, trust the static ML scaling (DEFAULT_WEIGHT). 
+        # Protect cold-start contexts: if we have almost no data, trust the static ML scaling (DEFAULT_WEIGHT).
         # Otherwise, Beta(1,1) will randomly permute the weights and scramble early predictions.
         if total_plays < 5:
             action = DEFAULT_WEIGHT
