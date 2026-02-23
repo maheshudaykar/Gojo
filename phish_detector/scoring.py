@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from phish_detector.rules import RuleHit
 
 GREEN_MAX_SCORE = 25
-YELLOW_MAX_SCORE = 60
+YELLOW_MAX_SCORE = 50
 
 
 @dataclass(frozen=True)

@@ -8,12 +8,12 @@ class TestScoring(unittest.TestCase):
         self.assertEqual(label_for_score(0), "green")
         self.assertEqual(label_for_score(25), "green")
         self.assertEqual(label_for_score(26), "yellow")
-        self.assertEqual(label_for_score(60), "yellow")
-        self.assertEqual(label_for_score(61), "red")
+        self.assertEqual(label_for_score(50), "yellow")
+        self.assertEqual(label_for_score(51), "red")
 
     def test_binary_label_boundary(self) -> None:
-        self.assertEqual(binary_label_for_score(60), "legit")
-        self.assertEqual(binary_label_for_score(61), "phish")
+        self.assertEqual(binary_label_for_score(50), "legit")
+        self.assertEqual(binary_label_for_score(51), "phish")
 
 
 if __name__ == "__main__":

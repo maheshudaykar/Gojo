@@ -280,8 +280,13 @@ class ThompsonSamplingPolicy:
             if isinstance(stats, dict)
         )
 
-        # Select action based on strategy
-        if strategy_used == "thompson":
+        # Protect cold-start contexts: if we have almost no data, trust the static ML scaling (DEFAULT_WEIGHT). 
+        # Otherwise, Beta(1,1) will randomly permute the weights and scramble early predictions.
+        if total_plays < 5:
+            action = DEFAULT_WEIGHT
+            confidence = 1.0
+            propensity = 1.0
+        elif strategy_used == "thompson":
             action, confidence = self._thompson_sampling(context_data)
             propensities = self._estimate_thompson_propensity(context_data)
             propensity = float(propensities.get(action, 0.0))

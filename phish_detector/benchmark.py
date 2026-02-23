@@ -213,16 +213,13 @@ def train_lexical_pipeline(
         features = extract_features(parsed, suspicious_tlds)
         feature_rows.append(vectorize_features(features))
 
-    base_model = LogisticRegression(max_iter=1000, class_weight="balanced", random_state=seed)
-    try:
-        calibrated = CalibratedClassifierCV(estimator=base_model, cv=3, method=method)
-    except TypeError:
-        calibrated = CalibratedClassifierCV(base_estimator=base_model, cv=3, method=method)
+    from sklearn.ensemble import RandomForestClassifier
+    base_model = RandomForestClassifier(n_estimators=200, max_depth=30, class_weight="balanced", random_state=seed)
 
     pipeline: Pipeline = Pipeline(
         [
             ("scaler", StandardScaler()),
-            ("clf", calibrated),
+            ("clf", base_model),
         ]
     )
     cast(Any, pipeline).fit(feature_rows, labels)

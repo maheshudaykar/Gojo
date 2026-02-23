@@ -12,8 +12,7 @@ from phish_detector.parsing import parse_url
 
 try:
     from joblib import dump, load  # type: ignore[import-not-found]
-    from sklearn.calibration import CalibratedClassifierCV
-    from sklearn.linear_model import LogisticRegression
+    from sklearn.ensemble import RandomForestClassifier
     from sklearn.pipeline import Pipeline
     from sklearn.preprocessing import StandardScaler
 except ImportError as exc:  # pragma: no cover
@@ -74,16 +73,12 @@ def train_lexical_model(
         features = extract_features(parsed, suspicious_tlds)
         feature_rows.append(vectorize_features(features))
 
-    base_model = LogisticRegression(max_iter=1000, class_weight="balanced")
-    try:
-        calibrated = CalibratedClassifierCV(estimator=base_model, cv=3)
-    except TypeError:
-        calibrated = CalibratedClassifierCV(base_estimator=base_model, cv=3)
+    base_model = RandomForestClassifier(n_estimators=200, max_depth=30, class_weight="balanced", random_state=42)
 
     pipeline: Any = Pipeline(
         [
             ("scaler", StandardScaler()),
-            ("clf", calibrated),
+            ("clf", base_model),
         ]
     )
     pipeline.fit(feature_rows, labels)
