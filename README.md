@@ -143,6 +143,33 @@ python -m flake8
 
 ---
 
+## 🔬 Reproducibility (Research Paper)
+
+To reproduce the exact metrics reported in the associated research paper, follow these strict execution steps:
+
+### 1. Dataset Construction (Frozen Checkpoint)
+The benchmark requires the mathematically balanced 50,000-sample dataset.
+1. Ensure the `gojo_dataset_v1.csv` checkpoint (frozen prior to evaluation) is placed in the project root.
+2. This dataset has been pre-filtered for exact-string deduplication and cross-split host leakage.
+
+### 2. Training Baseline Models
+All ML models and Thompson Sampling priors are initialized using a fixed random seed (`seed=42`) to guarantee deterministic cross-validation splits.
+```bash
+# Ensure the models are trained prior to validation
+python -m phish_detector.train --data gojo_dataset_v1.csv --url-col url --label-col label
+```
+
+### 3. Claims Validation & Evaluation
+To run the full suite of paper claims (Accuracy, ROC-AUC, Latency Microbenchmarks, McNemar Statistical Tests, Drift Degradation, and Imbalanced FPR) on the identical 80/20 test split:
+```bash
+python validate_claims.py
+```
+
+### 4. Random Seeds
+All stochastic operations (Random Forest bootstrap sampling, TS context multi-armed bandit, temporal dataset shuffling, and validation splits) are globally locked to `seed=42` throughout the validation pipeline.
+
+---
+
 ## 💻 Usage
 
 ### Web Interface

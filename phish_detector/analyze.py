@@ -202,6 +202,13 @@ def analyze_url(
 
             proba = predict_char_proba(ml_context["model"], parsed.original)
             ml_info.update({"mode": "char", "char": proba, "available": True})
+        elif ml_context["mode"] == "xgboost":
+            from phish_detector.features import extract_features, load_suspicious_tlds, vectorize_features
+            suspicious_tlds = load_suspicious_tlds()
+            features = extract_features(parsed, suspicious_tlds)
+            feature_vec = vectorize_features(features)
+            proba = float(ml_context["model"].predict_proba([feature_vec])[0][1])
+            ml_info.update({"mode": "xgboost", "xgboost": proba, "available": True})
         else:
             from phish_detector.ml_ensemble import predict_ensemble_proba
 

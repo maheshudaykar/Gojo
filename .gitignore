@@ -226,3 +226,8 @@ demo_practical.py
 research_paper.md
 implementation_plan.md
 walkthrough.md
+research_paper.html
+export_paper.py
+validate_claims.py
+*.pdf
+*.docx

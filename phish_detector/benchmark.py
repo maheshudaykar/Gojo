@@ -253,6 +253,36 @@ def train_char_pipeline(
     return pipeline
 
 
+def train_xgboost_pipeline(
+    urls: list[str],
+    labels: list[int],
+    seed: int,
+) -> Pipeline:
+    suspicious_tlds = load_suspicious_tlds()
+    feature_rows: list[list[float]] = []
+    for url in urls:
+        parsed = parse_url(url)
+        features = extract_features(parsed, suspicious_tlds)
+        feature_rows.append(vectorize_features(features))
+
+    import xgboost as xgb
+    base_model = xgb.XGBClassifier(
+        n_estimators=100,
+        max_depth=6,
+        random_state=seed,
+        eval_metric='logloss'
+    )
+
+    pipeline: Pipeline = Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            ("clf", base_model),
+        ]
+    )
+    cast(Any, pipeline).fit(feature_rows, labels)
+    return pipeline
+
+
 def build_config(
     baseline: str,
     brand_cfg: BrandRiskConfig | None = None,
@@ -280,6 +310,12 @@ def build_config(
         enable_brand_risk = False
     elif baseline == "char-only":
         ml_mode = "char"
+        score_mode = "ml_only"
+        enable_policy = False
+        enable_enrichment = False
+        enable_brand_risk = False
+    elif baseline == "ml-xgboost":
+        ml_mode = "xgboost"
         score_mode = "ml_only"
         enable_policy = False
         enable_enrichment = False
@@ -442,10 +478,12 @@ def select_ml_context(baseline: str, ml_contexts: dict[str, dict[str, Any]]) -> 
     if baseline == "rules-only":
         return None
     if baseline == "lexical-only":
-        return ml_contexts["lexical"]
+        return ml_contexts.get("lexical")
     if baseline == "char-only":
-        return ml_contexts["char"]
-    return ml_contexts["ensemble"]
+        return ml_contexts.get("char")
+    if baseline == "ml-xgboost":
+        return ml_contexts.get("xgboost")
+    return ml_contexts.get("ensemble")
 
 
 def _metric_auroc(y_true: list[int], scores: list[float]) -> float:
