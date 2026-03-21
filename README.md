@@ -112,15 +112,12 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-### 4. Download Dataset (Optional)
-```bash
-# Clone dataset repository
-git clone https://github.com/Priyanshu88/DatasetWebFraudDetection.git data/DatasetWebFraudDetection
-```
+### 4. Setup Dataset
+The required dataset (`gojo_dataset_v1.csv`) is included in the repository for evaluating the model.
 
 ### 5. Train Models
 ```bash
-python -m phish_detector.train --data data/DatasetWebFraudDetection/dataset.csv --url-col url --label-col verdict
+python -m phish_detector.train --data gojo_dataset_v1.csv --url-col url --label-col verdict
 ```
 
 ### 6. Launch Web UI
@@ -156,7 +153,7 @@ The benchmark requires the mathematically balanced 50,000-sample dataset.
 All ML models and Thompson Sampling priors are initialized using a fixed random seed (`seed=42`) to guarantee deterministic cross-validation splits.
 ```bash
 # Ensure the models are trained prior to validation
-python -m phish_detector.train --data gojo_dataset_v1.csv --url-col url --label-col label
+python -m phish_detector.train --data gojo_dataset_v1.csv --url-col url --label-col verdict
 ```
 
 ### 3. Claims Validation & Evaluation
