@@ -108,9 +108,9 @@ limiter = Limiter(
 
 csp = {
     "default-src": ["'self'"],
-    "style-src": ["'self'", "https://fonts.googleapis.com"],
+    "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
     "font-src": ["'self'", "https://fonts.gstatic.com"],
-    "script-src": ["'self'"],
+    "script-src": ["'self'", "'unsafe-inline'"],
     "img-src": ["'self'", "data:"],
 }
 Talisman(app, content_security_policy=csp, force_https=False)
