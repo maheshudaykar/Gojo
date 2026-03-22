@@ -346,7 +346,7 @@
                 name="file"
                 type="file"
                 accept=".csv"
-                style="display: none;"
+                style="opacity: 0; position: absolute; z-index: -1; width: 0.1px; height: 0.1px;"
                 onchange="document.getElementById('file-chosen-text').innerText = this.files[0] ? 'Selected: ' + this.files[0].name : ''"
               />
               <div id="file-chosen-text" style="margin-top: 12px; color: var(--success); font-weight: 700; text-align: center; min-height: 24px;"></div>
