@@ -336,21 +336,20 @@
           <!-- Bulk CSV Tab -->
           <div id="bulk-tab" class="tab-content">
             <div class="field">
-              <label for="file">
-                CSV File
-                <span class="sr-only">(optional)</span>
+              <label for="file" class="file-upload-zone" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; border: 2px dashed var(--accent); border-radius: 12px; background: rgba(77, 210, 255, 0.05); cursor: pointer; text-align: center; transition: all 0.2s;" onmouseover="this.style.background='rgba(77, 210, 255, 0.15)'" onmouseout="this.style.background='rgba(77, 210, 255, 0.05)'">
+                <span style="font-size: 2.5rem; margin-bottom: 12px; pointer-events: none;">📂</span>
+                <strong style="color: var(--accent); font-size: 1.1rem; pointer-events: none;">Click here to select a CSV file</strong>
+                <span style="color: var(--muted); font-size: 0.9rem; margin-top: 8px; pointer-events: none;">Format: column named 'url'. Limit to ~1000 rows.</span>
               </label>
               <input
                 id="file"
                 name="file"
                 type="file"
                 accept=".csv"
-                aria-describedby="file-hint"
+                style="display: none;"
+                onchange="document.getElementById('file-chosen-text').innerText = this.files[0] ? 'Selected: ' + this.files[0].name : ''"
               />
-              <div class="field-hint" id="file-hint">
-                <span>📄</span>
-                <span>Upload a CSV file with a column named 'url'. Each row will be analyzed independently. For best results, limit to &lt;&nbsp;1000 URLs per file.</span>
-              </div>
+              <div id="file-chosen-text" style="margin-top: 12px; color: var(--success); font-weight: 700; text-align: center; min-height: 24px;"></div>
             </div>
           </div>
 
